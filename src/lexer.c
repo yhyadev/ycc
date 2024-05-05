@@ -1,6 +1,6 @@
 #include <ctype.h>
-#include <stdio.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "lexer.h"
@@ -30,6 +30,13 @@ void lexer_skip_whitespace(Lexer *lexer) {
     }
 }
 
+void lexer_skip_identifer(Lexer *lexer) {
+    while (!lexer_is_eof(lexer) && (isalnum(lexer->buffer[lexer->position]) ||
+                                    lexer->buffer[lexer->position] == '_')) {
+        lexer->position++;
+    }
+}
+
 Token lexer_next_token(Lexer *lexer) {
     lexer_skip_whitespace(lexer);
 
@@ -49,8 +56,15 @@ Token lexer_next_token(Lexer *lexer) {
         TOKENIZE_SINGLE_CHARACTER(')', TOK_CLOSE_PAREN)
         TOKENIZE_SINGLE_CHARACTER('{', TOK_OPEN_BRACE)
         TOKENIZE_SINGLE_CHARACTER('}', TOK_CLOSE_BRACE)
+
     default:
-        SET_TOKEN_KIND(TOK_INVALID)
+        if (isalpha(ch)) {
+            lexer_skip_identifer(lexer);
+            SET_TOKEN_KIND(TOK_IDENTIFIER);
+        } else {
+            SET_TOKEN_KIND(TOK_INVALID)
+        }
+
         break;
     }
 
@@ -68,4 +82,3 @@ void lexer_debug_token(Lexer *lexer) {
 
     printf(" (%d)\n", token.kind);
 }
-
