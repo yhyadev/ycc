@@ -63,6 +63,7 @@ Token lexer_next_token(Lexer *lexer) {
         TOKENIZE_SINGLE_CHARACTER(')', TOK_CLOSE_PAREN)
         TOKENIZE_SINGLE_CHARACTER('{', TOK_OPEN_BRACE)
         TOKENIZE_SINGLE_CHARACTER('}', TOK_CLOSE_BRACE)
+        TOKENIZE_SINGLE_CHARACTER(';', TOK_SEMICOLON)
 
     default:
         if (isalpha(ch) || ch == '_') {

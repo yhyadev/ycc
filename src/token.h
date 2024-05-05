@@ -9,6 +9,7 @@ typedef enum {
     TOK_CLOSE_PAREN,
     TOK_OPEN_BRACE,
     TOK_CLOSE_BRACE,
+    TOK_SEMICOLON,
     TOK_IDENTIFIER,
     TOK_NUMBER,
 } TokenKind;
