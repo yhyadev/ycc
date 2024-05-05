@@ -37,6 +37,13 @@ void lexer_skip_identifer(Lexer *lexer) {
     }
 }
 
+void lexer_skip_number(Lexer *lexer) {
+    while (!lexer_is_eof(lexer) && (isdigit(lexer->buffer[lexer->position]) ||
+                                    lexer->buffer[lexer->position] == '.')) {
+        lexer->position++;
+    }
+}
+
 Token lexer_next_token(Lexer *lexer) {
     lexer_skip_whitespace(lexer);
 
@@ -61,6 +68,9 @@ Token lexer_next_token(Lexer *lexer) {
         if (isalpha(ch) || ch == '_') {
             lexer_skip_identifer(lexer);
             SET_TOKEN_KIND(TOK_IDENTIFIER);
+        } else if (isdigit(ch)) {
+            lexer_skip_number(lexer);
+            SET_TOKEN_KIND(TOK_NUMBER);
         } else {
             SET_TOKEN_KIND(TOK_INVALID)
         }
