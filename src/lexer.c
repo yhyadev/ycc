@@ -58,7 +58,7 @@ Token lexer_next_token(Lexer *lexer) {
         TOKENIZE_SINGLE_CHARACTER('}', TOK_CLOSE_BRACE)
 
     default:
-        if (isalpha(ch)) {
+        if (isalpha(ch) || ch == '_') {
             lexer_skip_identifer(lexer);
             SET_TOKEN_KIND(TOK_IDENTIFIER);
         } else {
