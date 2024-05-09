@@ -1,19 +1,9 @@
 #include <ctype.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "lexer.h"
 #include "token.h"
-
-#define SET_TOKEN_KIND(k)                                                      \
-    token.kind = k;                                                            \
-    token.loc.end = lexer->position;
-
-#define TOKENIZE_SINGLE_CHARACTER(c, k)                                        \
-    case c:                                                                    \
-        SET_TOKEN_KIND(k)                                                      \
-        break;
 
 Lexer lexer_new(const char *buffer) {
     Lexer lexer = {.buffer = buffer};
@@ -37,12 +27,35 @@ void lexer_skip_identifer(Lexer *lexer) {
     }
 }
 
-void lexer_skip_number(Lexer *lexer) {
+bool lexer_skip_number(Lexer *lexer) {
+    bool is_float = false;
+
     while (!lexer_is_eof(lexer) && (isdigit(lexer->buffer[lexer->position]) ||
                                     lexer->buffer[lexer->position] == '.')) {
         lexer->position++;
+
+        if (lexer->buffer[lexer->position] == '.') {
+            is_float = true;
+        }
     }
+
+    return is_float;
 }
+
+#define SET_TOKEN_KIND(k)                                                      \
+    token.kind = k;                                                            \
+    token.loc.end = lexer->position;
+
+#define COMPARE_AND_SET_TOKEN_KIND(s, k)                                       \
+    if ((token.loc.end - token.loc.start == strlen(s)) &&                      \
+        strncmp(&lexer->buffer[token.loc.start], s, strlen(s)) == 0) {         \
+        SET_TOKEN_KIND(k);                                                     \
+    }
+
+#define TOKENIZE_SINGLE_CHARACTER(c, k)                                        \
+    case c:                                                                    \
+        SET_TOKEN_KIND(k)                                                      \
+        break;
 
 Token lexer_next_token(Lexer *lexer) {
     lexer_skip_whitespace(lexer);
@@ -70,10 +83,17 @@ Token lexer_next_token(Lexer *lexer) {
     default:
         if (isalpha(ch) || ch == '_') {
             lexer_skip_identifer(lexer);
-            SET_TOKEN_KIND(TOK_IDENTIFIER);
+            SET_TOKEN_KIND(TOK_IDENTIFIER)
+            COMPARE_AND_SET_TOKEN_KIND("void", TOK_KEYWORD_VOID)
+            COMPARE_AND_SET_TOKEN_KIND("char", TOK_KEYWORD_CHAR)
+            COMPARE_AND_SET_TOKEN_KIND("short", TOK_KEYWORD_SHORT)
+            COMPARE_AND_SET_TOKEN_KIND("int", TOK_KEYWORD_INT)
+            COMPARE_AND_SET_TOKEN_KIND("long", TOK_KEYWORD_LONG)
+            COMPARE_AND_SET_TOKEN_KIND("float", TOK_KEYWORD_FLOAT)
+            COMPARE_AND_SET_TOKEN_KIND("double", TOK_KEYWORD_DOUBLE)
+            COMPARE_AND_SET_TOKEN_KIND("return", TOK_KEYWORD_RETURN)
         } else if (isdigit(ch)) {
-            lexer_skip_number(lexer);
-            SET_TOKEN_KIND(TOK_NUMBER);
+            SET_TOKEN_KIND(lexer_skip_number(lexer) ? TOK_FLOAT : TOK_INT)
         } else {
             SET_TOKEN_KIND(TOK_INVALID)
         }
@@ -82,16 +102,4 @@ Token lexer_next_token(Lexer *lexer) {
     }
 
     return token;
-}
-
-void lexer_debug_token(Lexer *lexer) {
-    Token token = lexer_next_token(lexer);
-
-    printf("%zu-%zu: ", token.loc.start, token.loc.end);
-
-    for (size_t i = token.loc.start; i < token.loc.end; i++) {
-        printf("%c", lexer->buffer[i]);
-    }
-
-    printf(" (%d)\n", token.kind);
 }

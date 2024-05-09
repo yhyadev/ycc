@@ -11,4 +11,3 @@ typedef struct {
 
 Lexer lexer_new(const char *buffer);
 Token lexer_next_token(Lexer *lexer);
-void lexer_debug_token(Lexer *lexer);
