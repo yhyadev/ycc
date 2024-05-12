@@ -33,7 +33,6 @@ void compile(const char *source_file_path, const char *input) {
     LLVMTargetMachineEmitToFile(target_machine, gen.module, "a.obj",
                                 LLVMObjectFile, NULL);
 
-    // It may already been leaked because of errors..
     codegen_free(gen);
     ast_root_free(root);
 }
