@@ -2,12 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-typedef struct {
-    char *items;
-    size_t count;
-    size_t capacity;
-} DynamicString;
-
 #define da_append(da, item)                                                    \
     do {                                                                       \
         if ((da)->count >= (da)->capacity) {                                   \

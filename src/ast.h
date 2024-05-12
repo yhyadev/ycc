@@ -11,13 +11,12 @@ typedef struct {
 } SourceLoc;
 
 typedef struct {
-    const char *buffer;
-    size_t length;
+    char *buffer;
     SourceLoc loc;
 } Name;
 
 typedef struct {
-    long long intval;
+    unsigned long long intval;
     long double floatval;
 } ASTExprValue;
 

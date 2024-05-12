@@ -1,18 +1,28 @@
+#include <assert.h>
+#include <malloc.h>
+
 #include "ast.h"
 #include "dynamic_array.h"
-#include <assert.h>
+
+void ast_function_free(ASTFunction function) {
+    da_free(function.body);
+
+    free(function.prototype.name.buffer);
+
+    for (size_t i = 0; i < function.prototype.parameters.count; i++) {
+        free(function.prototype.parameters.items[i].name.buffer);
+    }
+
+    da_free(function.prototype.parameters);
+}
 
 void ast_declaration_free(ASTDeclaration declaration) {
     switch (declaration.kind) {
     case ADK_FUNCTION:
-        da_free(declaration.value.function.body);
-        da_free(declaration.value.function.prototype.parameters);
-
+        ast_function_free(declaration.value.function);
         break;
-
     default:
-        assert(0 && "unreachable");
-        break;
+        assert(false && "unreachable");
     }
 }
 

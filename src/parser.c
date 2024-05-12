@@ -13,6 +13,12 @@
 #include "token.h"
 #include "type.h"
 
+typedef struct {
+    char *items;
+    size_t count;
+    size_t capacity;
+} DynamicString;
+
 Parser parser_new(const char *buffer) {
     Parser parser = {
         .buffer = buffer,
@@ -119,9 +125,16 @@ Name parser_parse_name(Parser *parser) {
 
     Token identifier_token = parser_next_token(parser);
 
+    DynamicString name_string = {0};
+
+    for (size_t i = identifier_token.loc.start; i < identifier_token.loc.end; i++) {
+        da_append(&name_string, parser->buffer[i]);
+    }
+
+    da_append(&name_string, '\0');
+
     Name name = {
-        .buffer = &parser->buffer[identifier_token.loc.start],
-        .length = identifier_token.loc.end - identifier_token.loc.start,
+        .buffer = name_string.items,
         .loc = buffer_loc_to_source_loc(parser->buffer, identifier_token.loc)};
 
     return name;
@@ -186,7 +199,7 @@ ASTExpr parser_parse_expr(Parser *parser) {
 
         da_append(&int_string, '\0');
 
-        long long intval = atoll(int_string.items);
+        unsigned long long intval = atoll(int_string.items);
 
         da_free(int_string);
 
