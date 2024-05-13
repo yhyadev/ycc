@@ -66,6 +66,8 @@ typedef struct {
 } ASTFunctionParameter;
 
 typedef struct {
+    bool variable;
+
     ASTFunctionParameter *items;
     size_t count;
     size_t capacity;

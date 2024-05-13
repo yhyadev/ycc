@@ -169,7 +169,8 @@ void codegen_compile_function(CodeGen *gen, ASTFunction ast_function) {
     }
 
     LLVMTypeRef function_type = LLVMFunctionType(
-        return_type, parameter_types.items, parameter_types.count, false);
+        return_type, parameter_types.items, parameter_types.count,
+        ast_function.prototype.parameters.variable);
 
     LLVMValueRef function = LLVMAddFunction(
         gen->module, ast_function.prototype.name.buffer, function_type);

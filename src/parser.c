@@ -138,7 +138,19 @@ Name parser_parse_name(Parser *parser) {
 
 ASTFunctionParameter parser_parse_function_parameter(Parser *parser) {
     Type expected_type = parser_parse_type(parser);
-    Name name = parser_parse_name(parser);
+
+    Name name = {0};
+
+    if (expected_type.kind == TY_VOID &&
+        parser_peek_token(parser).kind == TOK_IDENTIFIER) {
+        errorf(buffer_loc_to_source_loc(parser->buffer,
+                                        parser_peek_token(parser).loc),
+               "function parameter with incomplete type");
+
+        exit(1);
+    } else if (expected_type.kind != TY_VOID) {
+        name = parser_parse_name(parser);
+    }
 
     ASTFunctionParameter parameter = {.expected_type = expected_type,
                                       .name = name};
@@ -155,13 +167,30 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
         exit(1);
     }
 
-    ASTFunctionParameters parameters = {0};
+    ASTFunctionParameters parameters = {.variable = true};
 
     while (parser_peek_token(parser).kind != TOK_EOF &&
            parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
-        da_append(&parameters, parser_parse_function_parameter(parser));
+        SourceLoc parameter_type_loc = buffer_loc_to_source_loc(
+            parser->buffer, parser_peek_token(parser).loc);
 
-        if (!parser_eat_token(parser, TOK_COMMA)) {
+        ASTFunctionParameter parameter =
+            parser_parse_function_parameter(parser);
+
+        if (parameter.expected_type.kind == TY_VOID) {
+            if (!parameters.variable) {
+                errorf(parameter_type_loc,
+                       "'void' must be the first and only parameter");
+                exit(1);
+            }
+        } else {
+            da_append(&parameters, parameter);
+        }
+
+        parameters.variable = false;
+
+        if (!parser_eat_token(parser, TOK_COMMA) &&
+            parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
             errorf(buffer_loc_to_source_loc(parser->buffer,
                                             parser_peek_token(parser).loc),
                    "expected a ','");
