@@ -1,40 +1,27 @@
-#include <llvm-c/Core.h>
-#include <llvm-c/Target.h>
-#include <llvm-c/TargetMachine.h>
+#include <malloc.h>
+#include <stdbool.h>
+#include <stdio.h>
 
-#include "ast.h"
-#include "codegen.h"
-#include "parser.h"
+#include "cli.h"
+#include "compiler.h"
+#include "dynamic_array.h"
+#include "dynamic_string.h"
 
-void compile(const char *source_file_path, const char *input) {
-    Parser parser = parser_new(input);
+int main(int argc, const char **argv) {
+    CLI cli = cli_parse(argc, argv);
 
-    ASTRoot root = parser_parse_root(&parser);
+    if (cli.input_files.count == 0) {
+        fprintf(stderr, "error: no input files provided\n");
+        return 1;
+    }
 
-    CodeGen gen = codegen_new(source_file_path);
+    if (cli.input_files.count > 1) {
+        fprintf(stderr, "todo: multiple input files not handled yet\n");
+        return 1;
+    }
 
-    codegen_compile_root(&gen, root);
+    compiler_compile(cli.input_files.items[0].file_path,
+                     cli.input_files.items[0].file_content);
 
-    LLVMInitializeAllTargetInfos();
-    LLVMInitializeAllTargets();
-    LLVMInitializeAllTargetMCs();
-    LLVMInitializeAllAsmParsers();
-    LLVMInitializeAllAsmPrinters();
-
-    const char *target_triple = LLVMGetDefaultTargetTriple();
-
-    LLVMTargetRef target;
-    LLVMGetTargetFromTriple(target_triple, &target, NULL);
-
-    LLVMTargetMachineRef target_machine = LLVMCreateTargetMachine(
-        target, target_triple, "generic", "", LLVMCodeGenLevelDefault,
-        LLVMRelocDefault, LLVMCodeModelDefault);
-
-    LLVMTargetMachineEmitToFile(target_machine, gen.module, "a.obj",
-                                LLVMObjectFile, NULL);
-
-    codegen_free(gen);
-    ast_root_free(root);
+    cli_free(cli);
 }
-
-int main(void) {}

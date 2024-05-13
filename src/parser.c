@@ -8,16 +8,11 @@
 #include "ast.h"
 #include "diagnostics.h"
 #include "dynamic_array.h"
+#include "dynamic_string.h"
 #include "lexer.h"
 #include "parser.h"
 #include "token.h"
 #include "type.h"
-
-typedef struct {
-    char *items;
-    size_t count;
-    size_t capacity;
-} DynamicString;
 
 Parser parser_new(const char *buffer) {
     Parser parser = {
@@ -127,7 +122,8 @@ Name parser_parse_name(Parser *parser) {
 
     DynamicString name_string = {0};
 
-    for (size_t i = identifier_token.loc.start; i < identifier_token.loc.end; i++) {
+    for (size_t i = identifier_token.loc.start; i < identifier_token.loc.end;
+         i++) {
         da_append(&name_string, parser->buffer[i]);
     }
 

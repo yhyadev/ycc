@@ -5,7 +5,7 @@
 #include "diagnostics.h"
 
 void eprintln(const char *label, SourceLoc loc, const char *format,
-             va_list args) {
+              va_list args) {
     fprintf(stderr, "%zu:%zu: %s: ", loc.line, loc.column, label);
     vfprintf(stderr, format, args);
     fprintf(stderr, "\n");
