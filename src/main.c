@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "cli.h"
-#include "compiler.h"
+#include "driver.h"
 #include "dynamic_array.h"
 #include "dynamic_string.h"
 
@@ -20,7 +20,7 @@ int main(int argc, const char **argv) {
         return 1;
     }
 
-    compiler_compile(cli.input_files.items[0].file_path,
+    driver_compile(cli.input_files.items[0].file_path,
                      cli.input_files.items[0].file_content);
 
     cli_free(cli);

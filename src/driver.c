@@ -4,10 +4,10 @@
 
 #include "ast.h"
 #include "codegen.h"
-#include "compiler.h"
+#include "driver.h"
 #include "parser.h"
 
-void compiler_compile(const char *source_file_path, const char *input) {
+void driver_compile(const char *source_file_path, const char *input) {
     Parser parser = parser_new(input);
 
     ASTRoot root = parser_parse_root(&parser);
