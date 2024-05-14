@@ -150,11 +150,10 @@ void codegen_compile_return_stmt(CodeGen *gen, ASTStmt stmt) {
 
         LLVMBuildRetVoid(gen->builder);
     } else {
-        LLVMBuildRet(gen->builder,
-                     codegen_compile_and_cast_expr(
-                         gen->function.prototype.return_type,
-                         infer_type(stmt.value.ret.value),
-                         stmt.value.ret.value));
+        LLVMBuildRet(gen->builder, codegen_compile_and_cast_expr(
+                                       gen->function.prototype.return_type,
+                                       infer_type(stmt.value.ret.value),
+                                       stmt.value.ret.value));
     }
 
     gen->function_returned = true;
@@ -193,6 +192,10 @@ void codegen_compile_function(CodeGen *gen, ASTFunction ast_function) {
 
     LLVMValueRef function = LLVMAddFunction(
         gen->module, ast_function.prototype.name.buffer, function_type);
+
+    if (!ast_function.prototype.definition) {
+        return;
+    }
 
     LLVMBasicBlockRef entry_block = LLVMAppendBasicBlock(function, "entry");
 

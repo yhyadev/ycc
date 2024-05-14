@@ -5,7 +5,9 @@
 #include "dynamic_array.h"
 
 void ast_function_free(ASTFunction function) {
-    da_free(function.body);
+    if (function.prototype.definition) {
+        da_free(function.body);
+    }
 
     free(function.prototype.name.buffer);
 

@@ -56,10 +56,6 @@ typedef struct {
     size_t capacity;
 } ASTStmts;
 
-typedef enum {
-    ADK_FUNCTION,
-} ASTDeclarationKind;
-
 typedef struct {
     Type expected_type;
     Name name;
@@ -77,6 +73,7 @@ typedef struct {
     Type return_type;
     Name name;
     ASTFunctionParameters parameters;
+    bool definition;
 } ASTFunctionPrototype;
 
 typedef struct {
@@ -87,6 +84,10 @@ typedef struct {
 typedef union {
     ASTFunction function;
 } ASTDeclarationValue;
+
+typedef enum {
+    ADK_FUNCTION,
+} ASTDeclarationKind;
 
 typedef struct {
     ASTDeclarationValue value;

@@ -371,15 +371,20 @@ ASTDeclaration parser_parse_function_declaration(Parser *parser) {
 
     ASTFunctionParameters parameters = parser_parse_function_parameters(parser);
 
-    ASTStmts body = parser_parse_function_body(parser);
+    ASTFunctionPrototype prototype = {
+        .return_type = return_type,
+        .name = name,
+        .parameters = parameters,
+    };
 
-    ASTFunction function = {.prototype =
-                                {
-                                    .return_type = return_type,
-                                    .name = name,
-                                    .parameters = parameters,
-                                },
-                            .body = body};
+    ASTStmts body = {0};
+
+    if (!parser_eat_token(parser, TOK_SEMICOLON)) {
+        prototype.definition = true;
+        body = parser_parse_function_body(parser);
+    }
+
+    ASTFunction function = {.prototype = prototype, .body = body};
 
     ASTDeclaration declaration = {
         .value = {.function = function},
