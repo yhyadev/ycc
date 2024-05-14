@@ -71,6 +71,8 @@ Type parser_parse_type(Parser *parser) {
         break;
 
     case TOK_KEYWORD_SHORT:
+        parser_eat_token(parser, TOK_KEYWORD_INT);
+
         type.kind = TY_SHORT;
         break;
 
@@ -81,11 +83,15 @@ Type parser_parse_type(Parser *parser) {
     case TOK_KEYWORD_LONG:
         if (parser_peek_token(parser).kind == TOK_KEYWORD_LONG) {
             parser_next_token(parser);
+            parser_eat_token(parser, TOK_KEYWORD_INT);
+
             type.kind = TY_LONG_LONG;
         } else if (parser_peek_token(parser).kind == TOK_KEYWORD_DOUBLE) {
             parser_next_token(parser);
             type.kind = TY_LONG_DOUBLE;
         } else {
+            parser_eat_token(parser, TOK_KEYWORD_INT);
+
             type.kind = TY_LONG;
         }
 
