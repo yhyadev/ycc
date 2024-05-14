@@ -23,5 +23,7 @@ int main(int argc, const char **argv) {
     driver_compile(cli.input_files.items[0].file_path,
                      cli.input_files.items[0].file_content);
 
+    driver_link("a.out");
+
     cli_free(cli);
 }
