@@ -7,7 +7,8 @@
 typedef struct {
     LLVMModuleRef module;
     LLVMBuilderRef builder;
-    ASTFunction current_function;
+    ASTFunction function;
+    bool  function_returned;
 } CodeGen;
 
 CodeGen codegen_new(const char *source_file_path);

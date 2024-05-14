@@ -13,22 +13,6 @@
 #include "dynamic_array.h"
 #include "type.h"
 
-CodeGen codegen_new(const char *source_file_path) {
-    LLVMModuleRef module = LLVMModuleCreateWithName(source_file_path);
-    LLVMSetSourceFileName(module, source_file_path, strlen(source_file_path));
-
-    LLVMBuilderRef builder = LLVMCreateBuilder();
-
-    CodeGen gen = {.module = module, .builder = builder};
-
-    return gen;
-}
-
-void codegen_free(CodeGen gen) {
-    LLVMDisposeModule(gen.module);
-    LLVMDisposeBuilder(gen.builder);
-}
-
 LLVMTypeRef get_llvm_type(Type type) {
     switch (type.kind) {
     case TY_VOID:
@@ -52,12 +36,6 @@ LLVMTypeRef get_llvm_type(Type type) {
     }
 }
 
-typedef struct {
-    LLVMTypeRef *items;
-    size_t count;
-    size_t capacity;
-} LLVMTypes;
-
 Type infer_type(ASTExpr expr) {
     Type type = {0};
 
@@ -73,6 +51,39 @@ Type infer_type(ASTExpr expr) {
     }
 
     return type;
+}
+
+LLVMValueRef get_default_value(Type type) {
+    switch (type.kind) {
+    case TY_CHAR:
+    case TY_SHORT:
+    case TY_INT:
+    case TY_LONG:
+    case TY_LONG_LONG:
+        return LLVMConstInt(get_llvm_type(type), 0, false);
+    case TY_FLOAT:
+    case TY_DOUBLE:
+    case TY_LONG_DOUBLE:
+        return LLVMConstReal(get_llvm_type(type), 0.0);
+    default:
+        assert(false && "unreachable");
+    }
+}
+
+CodeGen codegen_new(const char *source_file_path) {
+    LLVMModuleRef module = LLVMModuleCreateWithName(source_file_path);
+    LLVMSetSourceFileName(module, source_file_path, strlen(source_file_path));
+
+    LLVMBuilderRef builder = LLVMCreateBuilder();
+
+    CodeGen gen = {.module = module, .builder = builder};
+
+    return gen;
+}
+
+void codegen_free(CodeGen gen) {
+    LLVMDisposeModule(gen.module);
+    LLVMDisposeBuilder(gen.builder);
 }
 
 LLVMValueRef codegen_compile_expr(LLVMTypeRef llvm_type, ASTExpr expr) {
@@ -132,7 +143,7 @@ LLVMValueRef codegen_compile_and_cast_expr(Type expected_type,
 
 void codegen_compile_return_stmt(CodeGen *gen, ASTStmt stmt) {
     if (stmt.value.ret.none) {
-        if (gen->current_function.prototype.return_type.kind != TY_VOID) {
+        if (gen->function.prototype.return_type.kind != TY_VOID) {
             errorf(stmt.loc, "expected non void return type");
             exit(1);
         }
@@ -141,10 +152,12 @@ void codegen_compile_return_stmt(CodeGen *gen, ASTStmt stmt) {
     } else {
         LLVMBuildRet(gen->builder,
                      codegen_compile_and_cast_expr(
-                         gen->current_function.prototype.return_type,
+                         gen->function.prototype.return_type,
                          infer_type(stmt.value.ret.value),
                          stmt.value.ret.value));
     }
+
+    gen->function_returned = true;
 }
 
 void codegen_compile_stmt(CodeGen *gen, ASTStmt stmt) {
@@ -156,6 +169,12 @@ void codegen_compile_stmt(CodeGen *gen, ASTStmt stmt) {
         assert(false && "unreachable");
     }
 }
+
+typedef struct {
+    LLVMTypeRef *items;
+    size_t count;
+    size_t capacity;
+} LLVMTypes;
 
 void codegen_compile_function(CodeGen *gen, ASTFunction ast_function) {
     LLVMTypeRef return_type = get_llvm_type(ast_function.prototype.return_type);
@@ -179,10 +198,21 @@ void codegen_compile_function(CodeGen *gen, ASTFunction ast_function) {
 
     LLVMPositionBuilderAtEnd(gen->builder, entry_block);
 
-    gen->current_function = ast_function;
+    gen->function = ast_function;
+    gen->function_returned = false;
 
     for (size_t i = 0; i < ast_function.body.count; i++) {
         codegen_compile_stmt(gen, ast_function.body.items[i]);
+    }
+
+    if (!gen->function_returned) {
+        if (gen->function.prototype.return_type.kind == TY_VOID) {
+            LLVMBuildRetVoid(gen->builder);
+        } else {
+            LLVMBuildRet(
+                gen->builder,
+                get_default_value(gen->function.prototype.return_type));
+        }
     }
 }
 
