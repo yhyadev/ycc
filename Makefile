@@ -1,3 +1,7 @@
+ifeq ($(PREFIX),)
+    PREFIX := /usr/local
+endif
+
 OUT := out
 SRC := src
 
@@ -14,5 +18,15 @@ $(OUT):
 $(OUT)/ycc: $(SOURCE_FILES)
 	$(CC) $(CFLAGS) $(LDFLAGS) $? -o $@
 
+install: $(OUT)/ycc
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	cp -f $(OUT)/ycc $(DESTDIR)$(PREFIX)/bin
+	chmod 777 $(DESTDIR)$(PREFIX)/bin/ycc
+
+uninstall: $(DESTDIR)$(PREFIX)/bin/ycc
+	rm -rf $?
+
 clean: $(OUT)
 	rm -rf $?
+
+.PHONY: all clean install uninstall
