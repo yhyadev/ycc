@@ -1,16 +1,16 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Types.h>
 
+#include "arena.h"
 #include "ast.h"
 #include "codegen.h"
 #include "diagnostics.h"
-#include "dynamic_array.h"
+#include "process.h"
 #include "type.h"
 
 LLVMTypeRef get_llvm_type(Type type) {
@@ -70,20 +70,15 @@ LLVMValueRef get_default_value(Type type) {
     }
 }
 
-CodeGen codegen_new(const char *source_file_path) {
+CodeGen codegen_new(Arena *arena, const char *source_file_path) {
     LLVMModuleRef module = LLVMModuleCreateWithName(source_file_path);
     LLVMSetSourceFileName(module, source_file_path, strlen(source_file_path));
 
     LLVMBuilderRef builder = LLVMCreateBuilder();
 
-    CodeGen gen = {.module = module, .builder = builder};
+    CodeGen gen = {.arena = arena, .module = module, .builder = builder};
 
     return gen;
-}
-
-void codegen_free(CodeGen gen) {
-    LLVMDisposeModule(gen.module);
-    LLVMDisposeBuilder(gen.builder);
 }
 
 LLVMValueRef codegen_compile_expr(LLVMTypeRef llvm_type, ASTExpr expr) {
@@ -145,7 +140,7 @@ void codegen_compile_return_stmt(CodeGen *gen, ASTStmt stmt) {
     if (stmt.value.ret.none) {
         if (gen->function.prototype.return_type.kind != TY_VOID) {
             errorf(stmt.loc, "expected non void return type");
-            exit(1);
+            process_exit(1);
         }
 
         LLVMBuildRetVoid(gen->builder);
@@ -180,8 +175,8 @@ void codegen_compile_function(CodeGen *gen, ASTFunction ast_function) {
     LLVMTypes parameter_types = {0};
 
     for (size_t i = 0; i < ast_function.prototype.parameters.count; i++) {
-        da_append(
-            &parameter_types,
+        arena_da_append(
+            gen->arena, &parameter_types,
             get_llvm_type(
                 ast_function.prototype.parameters.items[i].expected_type));
     }

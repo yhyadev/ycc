@@ -7,15 +7,16 @@
 
 #include "ast.h"
 #include "diagnostics.h"
-#include "dynamic_array.h"
 #include "dynamic_string.h"
 #include "lexer.h"
 #include "parser.h"
+#include "process.h"
 #include "token.h"
 #include "type.h"
 
-Parser parser_new(const char *buffer) {
+Parser parser_new(Arena *arena, const char *buffer) {
     Parser parser = {
+        .arena = arena,
         .buffer = buffer,
         .lexer = lexer_new(buffer),
     };
@@ -109,7 +110,7 @@ Type parser_parse_type(Parser *parser) {
         errorf(buffer_loc_to_source_loc(parser->buffer, token.loc),
                "unkown type");
 
-        exit(1);
+        process_exit(1);
     }
 
     return type;
@@ -121,7 +122,7 @@ Name parser_parse_name(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected an identifier");
 
-        exit(1);
+        process_exit(1);
     }
 
     Token identifier_token = parser_next_token(parser);
@@ -130,10 +131,10 @@ Name parser_parse_name(Parser *parser) {
 
     for (size_t i = identifier_token.loc.start; i < identifier_token.loc.end;
          i++) {
-        da_append(&name_string, parser->buffer[i]);
+        arena_da_append(parser->arena, &name_string, parser->buffer[i]);
     }
 
-    da_append(&name_string, '\0');
+    arena_da_append(parser->arena, &name_string, '\0');
 
     Name name = {
         .buffer = name_string.items,
@@ -153,7 +154,7 @@ ASTFunctionParameter parser_parse_function_parameter(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "function parameter with incomplete type");
 
-        exit(1);
+        process_exit(1);
     } else if (expected_type.kind != TY_VOID) {
         name = parser_parse_name(parser);
     }
@@ -170,7 +171,7 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a '('");
 
-        exit(1);
+        process_exit(1);
     }
 
     ASTFunctionParameters parameters = {.variable = true};
@@ -187,10 +188,10 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
             if (!parameters.variable) {
                 errorf(parameter_type_loc,
                        "'void' must be the first and only parameter");
-                exit(1);
+                process_exit(1);
             }
         } else {
-            da_append(&parameters, parameter);
+            arena_da_append(parser->arena, &parameters, parameter);
         }
 
         parameters.variable = false;
@@ -201,7 +202,7 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
                                             parser_peek_token(parser).loc),
                    "expected a ','");
 
-            exit(1);
+            process_exit(1);
         }
     }
 
@@ -210,7 +211,7 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a ')'");
 
-        exit(1);
+        process_exit(1);
     }
 
     return parameters;
@@ -225,14 +226,12 @@ ASTExpr parser_parse_expr(Parser *parser) {
         DynamicString int_string = {0};
 
         for (size_t i = int_token.loc.start; i < int_token.loc.end; i++) {
-            da_append(&int_string, parser->buffer[i]);
+            arena_da_append(parser->arena, &int_string, parser->buffer[i]);
         }
 
-        da_append(&int_string, '\0');
+        arena_da_append(parser->arena, &int_string, '\0');
 
         unsigned long long intval = atoll(int_string.items);
-
-        da_free(int_string);
 
         if (errno == ERANGE) {
             errorf(loc, intval == LLONG_MAX
@@ -241,7 +240,7 @@ ASTExpr parser_parse_expr(Parser *parser) {
                             : "integer constant is too small to represent in "
                               "any integer type");
 
-            exit(1);
+            process_exit(1);
         }
 
         ASTExpr expr = {
@@ -258,14 +257,12 @@ ASTExpr parser_parse_expr(Parser *parser) {
         DynamicString float_string = {0};
 
         for (size_t i = float_token.loc.start; i < float_token.loc.end; i++) {
-            da_append(&float_string, parser->buffer[i]);
+            arena_da_append(parser->arena, &float_string, parser->buffer[i]);
         }
 
-        da_append(&float_string, '\0');
+        arena_da_append(parser->arena, &float_string, '\0');
 
         long double floatval = strtold(float_string.items, NULL);
-
-        da_free(float_string);
 
         if (errno == ERANGE) {
             errorf(loc, floatval == LDBL_MAX
@@ -274,7 +271,7 @@ ASTExpr parser_parse_expr(Parser *parser) {
                             : "float constant is too small to represent in "
                               "any float type");
 
-            exit(1);
+            process_exit(1);
         }
 
         ASTExpr expr = {
@@ -287,7 +284,7 @@ ASTExpr parser_parse_expr(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected an expression");
 
-        exit(1);
+        process_exit(1);
     }
 }
 
@@ -308,7 +305,7 @@ ASTStmt parser_parse_return_stmt(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a semicolon after statement");
 
-        exit(1);
+        process_exit(1);
     }
 
     ASTReturn ret = {.value = value, .none = none};
@@ -332,7 +329,7 @@ ASTStmt parser_parse_stmt(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a statement");
 
-        exit(1);
+        process_exit(1);
     }
 }
 
@@ -342,14 +339,14 @@ ASTStmts parser_parse_function_body(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a '{'");
 
-        exit(1);
+        process_exit(1);
     }
 
     ASTStmts body = {0};
 
     while (parser_peek_token(parser).kind != TOK_EOF &&
            parser_peek_token(parser).kind != TOK_CLOSE_BRACE) {
-        da_append(&body, parser_parse_stmt(parser));
+        arena_da_append(parser->arena, &body, parser_parse_stmt(parser));
     }
 
     if (!parser_eat_token(parser, TOK_CLOSE_BRACE)) {
@@ -357,7 +354,7 @@ ASTStmts parser_parse_function_body(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a '}'");
 
-        exit(1);
+        process_exit(1);
     }
 
     return body;
@@ -410,7 +407,7 @@ ASTDeclaration parser_parse_declaration(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a top level declaration");
 
-        exit(1);
+        process_exit(1);
     }
 }
 
@@ -418,7 +415,8 @@ ASTRoot parser_parse_root(Parser *parser) {
     ASTRoot root = {0};
 
     while (parser_peek_token(parser).kind != TOK_EOF) {
-        da_append(&root.declarations, parser_parse_declaration(parser));
+        arena_da_append(parser->arena, &root.declarations,
+                        parser_parse_declaration(parser));
     }
 
     return root;

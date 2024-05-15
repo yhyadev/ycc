@@ -1,14 +1,26 @@
 #include <malloc.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdnoreturn.h>
 
 #include "cli.h"
 #include "driver.h"
-#include "dynamic_array.h"
 #include "dynamic_string.h"
+#include "process.h"
+
+#define ARENA_IMPLEMENTATION
+#include "arena.h"
+
+static Arena global_arena = {0};
+
+noreturn void process_exit(int status_code) {
+    arena_free(&global_arena);
+    exit(status_code);
+}
 
 int main(int argc, const char **argv) {
-    CLI cli = cli_parse(argc, argv);
+    CLI cli = cli_parse(&global_arena, argc, argv);
 
     if (cli.input_files.count == 0) {
         fprintf(stderr, "error: no input files provided\n");
@@ -20,10 +32,10 @@ int main(int argc, const char **argv) {
         return 1;
     }
 
-    driver_compile(cli.input_files.items[0].file_path,
-                     cli.input_files.items[0].file_content);
+    driver_compile(&global_arena, cli.input_files.items[0].file_path,
+                   cli.input_files.items[0].file_content);
 
-    driver_link("a.out");
+    driver_link(&global_arena, "a.out");
 
-    cli_free(cli);
+    arena_free(&global_arena);
 }

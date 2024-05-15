@@ -104,5 +104,3 @@ typedef struct {
 typedef struct {
     ASTDeclarations declarations;
 } ASTRoot;
-
-void ast_root_free(ASTRoot root);
