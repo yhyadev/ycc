@@ -16,13 +16,19 @@ typedef struct {
 } Name;
 
 typedef struct {
+    Name name;
+} ASTIdentifier;
+
+typedef struct {
     unsigned long long intval;
     long double floatval;
+    ASTIdentifier identifier;
 } ASTExprValue;
 
 typedef enum {
     EK_INT,
     EK_FLOAT,
+    EK_IDENTIFIER,
 } ASTExprKind;
 
 typedef struct {
@@ -36,12 +42,21 @@ typedef struct {
     bool none;
 } ASTReturn;
 
+typedef struct {
+    Type type;
+    Name name;
+    ASTExpr value;
+    bool default_initialized;
+} ASTVariable;
+
 typedef enum {
     SK_RETURN,
+    SK_VARIABLE_DECLARATION,
 } ASTStmtKind;
 
 typedef union {
     ASTReturn ret;
+    ASTVariable variable_declaration;
 } ASTStmtValue;
 
 typedef struct {
@@ -83,10 +98,12 @@ typedef struct {
 
 typedef union {
     ASTFunction function;
+    ASTVariable variable;
 } ASTDeclarationValue;
 
 typedef enum {
-    ADK_FUNCTION,
+    DK_FUNCTION,
+    DK_VARIABLE,
 } ASTDeclarationKind;
 
 typedef struct {

@@ -1,3 +1,5 @@
+#pragma once
+
 #include "arena.h"
 
 void driver_compile(Arena *arena, const char *source_file_path, const char *input);

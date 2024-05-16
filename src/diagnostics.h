@@ -1,3 +1,5 @@
+#pragma once
+
 #include "ast.h"
 
 void errorf(SourceLoc loc, const char *format, ...);

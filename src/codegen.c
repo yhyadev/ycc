@@ -11,6 +11,7 @@
 #include "codegen.h"
 #include "diagnostics.h"
 #include "process.h"
+#include "symbol_table.h"
 #include "type.h"
 
 LLVMTypeRef get_llvm_type(Type type) {
@@ -36,23 +37,6 @@ LLVMTypeRef get_llvm_type(Type type) {
     }
 }
 
-Type infer_type(ASTExpr expr) {
-    Type type = {0};
-
-    switch (expr.kind) {
-    case EK_INT:
-        type.kind = TY_LONG_LONG;
-        break;
-    case EK_FLOAT:
-        type.kind = TY_LONG_DOUBLE;
-        break;
-    default:
-        assert(false && "unreachable");
-    }
-
-    return type;
-}
-
 LLVMValueRef get_default_value(Type type) {
     switch (type.kind) {
     case TY_CHAR:
@@ -76,17 +60,66 @@ CodeGen codegen_new(Arena *arena, const char *source_file_path) {
 
     LLVMBuilderRef builder = LLVMCreateBuilder();
 
-    CodeGen gen = {.arena = arena, .module = module, .builder = builder};
+    CodeGen gen = {.arena = arena,
+                   .module = module,
+                   .builder = builder,
+                   .symbol_table = symbol_table_new(arena)};
 
     return gen;
 }
 
-LLVMValueRef codegen_compile_expr(LLVMTypeRef llvm_type, ASTExpr expr) {
+Type codegen_infer_type(CodeGen *gen, ASTExpr expr) {
+    Type type = {0};
+
+    switch (expr.kind) {
+    case EK_INT:
+        type.kind = TY_LONG_LONG;
+        break;
+
+    case EK_FLOAT:
+        type.kind = TY_LONG_DOUBLE;
+        break;
+
+    case EK_IDENTIFIER: {
+        type =
+            symbol_table_lookup(&gen->symbol_table, expr.value.identifier.name)
+                .type;
+        break;
+    }
+
+    default:
+        assert(false && "unreachable");
+    }
+
+    return type;
+}
+
+LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
+                                  ASTExpr expr) {
     switch (expr.kind) {
     case EK_INT:
         return LLVMConstInt(llvm_type, expr.value.intval, false);
+
     case EK_FLOAT:
         return LLVMConstReal(llvm_type, expr.value.floatval);
+
+    case EK_IDENTIFIER: {
+        Symbol symbol =
+            symbol_table_lookup(&gen->symbol_table, expr.value.identifier.name);
+
+        if (symbol.linkage == SL_GLOBAL) {
+            LLVMValueRef global_variable = LLVMGetNamedGlobal(
+                gen->module, expr.value.identifier.name.buffer);
+
+            return LLVMGetInitializer(global_variable);
+        } else {
+            return LLVMBuildLoad2(gen->builder, get_llvm_type(symbol.type),
+                                  symbol.alloca_pointer, "");
+        }
+
+        break;
+    }
+
     default:
         assert(false && "unreachable");
     }
@@ -123,35 +156,92 @@ ASTExpr codegen_cast_expr(Type type, ASTExpr expr) {
     COMPARE_AND_CAST_EXPRESSION_FLOAT(TY_DOUBLE, double)
     COMPARE_AND_CAST_EXPRESSION_FLOAT(TY_LONG_DOUBLE, long double)
 
+    if (expr.kind == EK_IDENTIFIER) {
+        errorf(expr.loc, "casting non-constant expression is not implemented yet");
+
+        process_exit(1);
+    }
+
     return expr;
 }
 
-LLVMValueRef codegen_compile_and_cast_expr(Type expected_type,
+LLVMValueRef codegen_compile_and_cast_expr(CodeGen *gen, Type expected_type,
                                            Type original_type, ASTExpr expr) {
     if (expected_type.kind == original_type.kind) {
-        return codegen_compile_expr(get_llvm_type(expected_type), expr);
+        return codegen_compile_expr(gen, get_llvm_type(expected_type), expr);
     } else {
-        return codegen_compile_expr(get_llvm_type(expected_type),
+        return codegen_compile_expr(gen, get_llvm_type(expected_type),
                                     codegen_cast_expr(expected_type, expr));
     }
 }
 
 void codegen_compile_return_stmt(CodeGen *gen, ASTStmt stmt) {
     if (stmt.value.ret.none) {
-        if (gen->function.prototype.return_type.kind != TY_VOID) {
+        if (gen->context.function.prototype.return_type.kind != TY_VOID) {
             errorf(stmt.loc, "expected non void return type");
+
             process_exit(1);
         }
 
         LLVMBuildRetVoid(gen->builder);
     } else {
-        LLVMBuildRet(gen->builder, codegen_compile_and_cast_expr(
-                                       gen->function.prototype.return_type,
-                                       infer_type(stmt.value.ret.value),
-                                       stmt.value.ret.value));
+        LLVMBuildRet(gen->builder,
+                     codegen_compile_and_cast_expr(
+                         gen, gen->context.function.prototype.return_type,
+                         codegen_infer_type(gen, stmt.value.ret.value),
+                         stmt.value.ret.value));
     }
 
-    gen->function_returned = true;
+    gen->context.function_returned = true;
+}
+
+void codegen_compile_variable(CodeGen *gen, ASTVariable ast_variable,
+                              SymbolLinkage symbol_linkage) {
+    if (symbol_linkage == SL_GLOBAL) {
+        LLVMValueRef global_variable =
+            LLVMAddGlobal(gen->module, get_llvm_type(ast_variable.type),
+                          ast_variable.name.buffer);
+
+        if (ast_variable.default_initialized) {
+            LLVMSetInitializer(global_variable,
+                               get_default_value(ast_variable.type));
+        } else {
+            LLVMSetInitializer(global_variable,
+                               codegen_compile_and_cast_expr(
+                                   gen, ast_variable.type,
+                                   codegen_infer_type(gen, ast_variable.value),
+                                   ast_variable.value));
+        }
+
+        Symbol symbol = {.type = ast_variable.type,
+                         .name = ast_variable.name,
+                         .linkage = symbol_linkage};
+
+        symbol_table_set(&gen->symbol_table, symbol);
+    } else {
+        LLVMValueRef alloca_pointer =
+            LLVMBuildAlloca(gen->builder, get_llvm_type(ast_variable.type),
+                            ast_variable.name.buffer);
+
+        if (ast_variable.default_initialized) {
+            LLVMBuildStore(gen->builder, get_default_value(ast_variable.type),
+                           alloca_pointer);
+        } else {
+            LLVMBuildStore(gen->builder,
+                           codegen_compile_and_cast_expr(
+                               gen, ast_variable.type,
+                               codegen_infer_type(gen, ast_variable.value),
+                               ast_variable.value),
+                           alloca_pointer);
+        }
+
+        Symbol symbol = {.type = ast_variable.type,
+                         .name = ast_variable.name,
+                         .linkage = symbol_linkage,
+                         .alloca_pointer = alloca_pointer};
+
+        symbol_table_set(&gen->symbol_table, symbol);
+    }
 }
 
 void codegen_compile_stmt(CodeGen *gen, ASTStmt stmt) {
@@ -159,6 +249,12 @@ void codegen_compile_stmt(CodeGen *gen, ASTStmt stmt) {
     case SK_RETURN:
         codegen_compile_return_stmt(gen, stmt);
         break;
+
+    case SK_VARIABLE_DECLARATION:
+        codegen_compile_variable(gen, stmt.value.variable_declaration,
+                                 SL_LOCAL);
+        break;
+
     default:
         assert(false && "unreachable");
     }
@@ -196,29 +292,38 @@ void codegen_compile_function(CodeGen *gen, ASTFunction ast_function) {
 
     LLVMPositionBuilderAtEnd(gen->builder, entry_block);
 
-    gen->function = ast_function;
-    gen->function_returned = false;
+    gen->context.function = ast_function;
+    gen->context.function_returned = false;
 
     for (size_t i = 0; i < ast_function.body.count; i++) {
         codegen_compile_stmt(gen, ast_function.body.items[i]);
     }
 
-    if (!gen->function_returned) {
-        if (gen->function.prototype.return_type.kind == TY_VOID) {
+    if (!gen->context.function_returned) {
+        if (gen->context.function.prototype.return_type.kind == TY_VOID) {
             LLVMBuildRetVoid(gen->builder);
         } else {
             LLVMBuildRet(
                 gen->builder,
-                get_default_value(gen->function.prototype.return_type));
+                get_default_value(gen->context.function.prototype.return_type));
         }
     }
+
+    symbol_table_reset(&gen->symbol_table);
 }
 
 void codegen_compile_declaration(CodeGen *gen, ASTDeclaration declaration) {
     switch (declaration.kind) {
-    case ADK_FUNCTION:
+    case DK_FUNCTION:
         codegen_compile_function(gen, declaration.value.function);
         break;
+
+    case DK_VARIABLE:
+        codegen_compile_variable(gen, declaration.value.variable, SL_GLOBAL);
+        break;
+
+    default:
+        assert(false && "unreachable");
     }
 }
 

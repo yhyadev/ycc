@@ -143,80 +143,6 @@ Name parser_parse_name(Parser *parser) {
     return name;
 }
 
-ASTFunctionParameter parser_parse_function_parameter(Parser *parser) {
-    Type expected_type = parser_parse_type(parser);
-
-    Name name = {0};
-
-    if (expected_type.kind == TY_VOID &&
-        parser_peek_token(parser).kind == TOK_IDENTIFIER) {
-        errorf(buffer_loc_to_source_loc(parser->buffer,
-                                        parser_peek_token(parser).loc),
-               "function parameter with incomplete type");
-
-        process_exit(1);
-    } else if (expected_type.kind != TY_VOID) {
-        name = parser_parse_name(parser);
-    }
-
-    ASTFunctionParameter parameter = {.expected_type = expected_type,
-                                      .name = name};
-
-    return parameter;
-}
-
-ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
-    if (!parser_eat_token(parser, TOK_OPEN_PAREN)) {
-        errorf(buffer_loc_to_source_loc(parser->buffer,
-                                        parser_peek_token(parser).loc),
-               "expected a '('");
-
-        process_exit(1);
-    }
-
-    ASTFunctionParameters parameters = {.variable = true};
-
-    while (parser_peek_token(parser).kind != TOK_EOF &&
-           parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
-        SourceLoc parameter_type_loc = buffer_loc_to_source_loc(
-            parser->buffer, parser_peek_token(parser).loc);
-
-        ASTFunctionParameter parameter =
-            parser_parse_function_parameter(parser);
-
-        if (parameter.expected_type.kind == TY_VOID) {
-            if (!parameters.variable) {
-                errorf(parameter_type_loc,
-                       "'void' must be the first and only parameter");
-                process_exit(1);
-            }
-        } else {
-            arena_da_append(parser->arena, &parameters, parameter);
-        }
-
-        parameters.variable = false;
-
-        if (!parser_eat_token(parser, TOK_COMMA) &&
-            parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
-            errorf(buffer_loc_to_source_loc(parser->buffer,
-                                            parser_peek_token(parser).loc),
-                   "expected a ','");
-
-            process_exit(1);
-        }
-    }
-
-    if (!parser_eat_token(parser, TOK_CLOSE_PAREN)) {
-        errorf(buffer_loc_to_source_loc(parser->buffer,
-                                        parser_peek_token(parser).loc),
-               "expected a ')'");
-
-        process_exit(1);
-    }
-
-    return parameters;
-}
-
 ASTExpr parser_parse_expr(Parser *parser) {
     switch (parser_peek_token(parser).kind) {
     case TOK_INT: {
@@ -279,6 +205,17 @@ ASTExpr parser_parse_expr(Parser *parser) {
 
         return expr;
     }
+
+    case TOK_IDENTIFIER: {
+        Name name = parser_parse_name(parser);
+
+        ASTExpr expr = {.value = {.identifier = {.name = name}},
+                        .kind = EK_IDENTIFIER,
+                        .loc = name.loc};
+
+        return expr;
+    }
+
     default:
         errorf(buffer_loc_to_source_loc(parser->buffer,
                                         parser_peek_token(parser).loc),
@@ -286,6 +223,43 @@ ASTExpr parser_parse_expr(Parser *parser) {
 
         process_exit(1);
     }
+}
+
+ASTDeclaration parser_parse_variable_declaration(Parser *parser, Type type,
+                                                 Name name) {
+    ASTExpr value = {0};
+    bool default_initialized = true;
+
+    if (!parser_eat_token(parser, TOK_SEMICOLON)) {
+        if (!parser_eat_token(parser, TOK_ASSIGN)) {
+            errorf(buffer_loc_to_source_loc(parser->buffer,
+                                            parser_peek_token(parser).loc),
+                   "expected a ';' at the end of declaration");
+
+            process_exit(1);
+        }
+
+        value = parser_parse_expr(parser);
+        default_initialized = false;
+
+        if (!parser_eat_token(parser, TOK_SEMICOLON)) {
+            errorf(buffer_loc_to_source_loc(parser->buffer,
+                                            parser_peek_token(parser).loc),
+                   "expected a ';' at the end of declaration");
+
+            process_exit(1);
+        }
+    }
+
+    ASTVariable variable = {.type = type,
+                            .name = name,
+                            .value = value,
+                            .default_initialized = default_initialized};
+
+    ASTDeclaration declaration = {
+        .value = {.variable = variable}, .kind = DK_VARIABLE, .loc = name.loc};
+
+    return declaration;
 }
 
 ASTStmt parser_parse_return_stmt(Parser *parser) {
@@ -303,7 +277,7 @@ ASTStmt parser_parse_return_stmt(Parser *parser) {
     if (!parser_eat_token(parser, TOK_SEMICOLON)) {
         errorf(buffer_loc_to_source_loc(parser->buffer,
                                         parser_peek_token(parser).loc),
-               "expected a semicolon after statement");
+               "expected a ';' at the end of statement");
 
         process_exit(1);
     }
@@ -321,6 +295,28 @@ ASTStmt parser_parse_stmt(Parser *parser) {
         parser_next_token(parser);
         return parser_parse_stmt(parser);
 
+    case TOK_KEYWORD_VOID:
+    case TOK_KEYWORD_CHAR:
+    case TOK_KEYWORD_SHORT:
+    case TOK_KEYWORD_INT:
+    case TOK_KEYWORD_LONG:
+    case TOK_KEYWORD_FLOAT:
+    case TOK_KEYWORD_DOUBLE: {
+        Type type = parser_parse_type(parser);
+
+        Name name = parser_parse_name(parser);
+
+        ASTDeclaration declaration =
+            parser_parse_variable_declaration(parser, type, name);
+
+        ASTStmt stmt = {
+            .value = {.variable_declaration = declaration.value.variable},
+            .kind = SK_VARIABLE_DECLARATION,
+            .loc = declaration.loc};
+
+        return stmt;
+    }
+
     case TOK_KEYWORD_RETURN:
         return parser_parse_return_stmt(parser);
 
@@ -331,6 +327,81 @@ ASTStmt parser_parse_stmt(Parser *parser) {
 
         process_exit(1);
     }
+}
+
+ASTFunctionParameter parser_parse_function_parameter(Parser *parser) {
+    Type expected_type = parser_parse_type(parser);
+
+    Name name = {0};
+
+    if (expected_type.kind == TY_VOID &&
+        parser_peek_token(parser).kind == TOK_IDENTIFIER) {
+        errorf(buffer_loc_to_source_loc(parser->buffer,
+                                        parser_peek_token(parser).loc),
+               "function parameter with incomplete type");
+
+        process_exit(1);
+    } else if (expected_type.kind != TY_VOID) {
+        name = parser_parse_name(parser);
+    }
+
+    ASTFunctionParameter parameter = {.expected_type = expected_type,
+                                      .name = name};
+
+    return parameter;
+}
+
+ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
+    if (!parser_eat_token(parser, TOK_OPEN_PAREN)) {
+        errorf(buffer_loc_to_source_loc(parser->buffer,
+                                        parser_peek_token(parser).loc),
+               "expected a '('");
+
+        process_exit(1);
+    }
+
+    ASTFunctionParameters parameters = {.variable = true};
+
+    while (parser_peek_token(parser).kind != TOK_EOF &&
+           parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
+        SourceLoc parameter_type_loc = buffer_loc_to_source_loc(
+            parser->buffer, parser_peek_token(parser).loc);
+
+        ASTFunctionParameter parameter =
+            parser_parse_function_parameter(parser);
+
+        if (parameter.expected_type.kind == TY_VOID) {
+            if (!parameters.variable) {
+                errorf(parameter_type_loc,
+                       "'void' must be the first and only parameter");
+
+                process_exit(1);
+            }
+        } else {
+            arena_da_append(parser->arena, &parameters, parameter);
+        }
+
+        parameters.variable = false;
+
+        if (!parser_eat_token(parser, TOK_COMMA) &&
+            parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
+            errorf(buffer_loc_to_source_loc(parser->buffer,
+                                            parser_peek_token(parser).loc),
+                   "expected a ','");
+
+            process_exit(1);
+        }
+    }
+
+    if (!parser_eat_token(parser, TOK_CLOSE_PAREN)) {
+        errorf(buffer_loc_to_source_loc(parser->buffer,
+                                        parser_peek_token(parser).loc),
+               "expected a ')'");
+
+        process_exit(1);
+    }
+
+    return parameters;
 }
 
 ASTStmts parser_parse_function_body(Parser *parser) {
@@ -346,7 +417,8 @@ ASTStmts parser_parse_function_body(Parser *parser) {
 
     while (parser_peek_token(parser).kind != TOK_EOF &&
            parser_peek_token(parser).kind != TOK_CLOSE_BRACE) {
-        arena_da_append(parser->arena, &body, parser_parse_stmt(parser));
+        ASTStmt stmt = parser_parse_stmt(parser);
+        arena_da_append(parser->arena, &body, stmt);
     }
 
     if (!parser_eat_token(parser, TOK_CLOSE_BRACE)) {
@@ -360,12 +432,8 @@ ASTStmts parser_parse_function_body(Parser *parser) {
     return body;
 }
 
-ASTDeclaration parser_parse_function_declaration(Parser *parser) {
-    Token return_type_token = parser_peek_token(parser);
-    Type return_type = parser_parse_type(parser);
-
-    Name name = parser_parse_name(parser);
-
+ASTDeclaration parser_parse_function_declaration(Parser *parser,
+                                                 Type return_type, Name name) {
     ASTFunctionParameters parameters = parser_parse_function_parameters(parser);
 
     ASTFunctionPrototype prototype = {
@@ -384,9 +452,7 @@ ASTDeclaration parser_parse_function_declaration(Parser *parser) {
     ASTFunction function = {.prototype = prototype, .body = body};
 
     ASTDeclaration declaration = {
-        .value = {.function = function},
-        .kind = ADK_FUNCTION,
-        .loc = buffer_loc_to_source_loc(parser->buffer, return_type_token.loc)};
+        .value = {.function = function}, .kind = DK_FUNCTION, .loc = name.loc};
 
     return declaration;
 }
@@ -399,8 +465,24 @@ ASTDeclaration parser_parse_declaration(Parser *parser) {
     case TOK_KEYWORD_INT:
     case TOK_KEYWORD_LONG:
     case TOK_KEYWORD_FLOAT:
-    case TOK_KEYWORD_DOUBLE:
-        return parser_parse_function_declaration(parser);
+    case TOK_KEYWORD_DOUBLE: {
+        Type type = parser_parse_type(parser);
+
+        Name name = parser_parse_name(parser);
+
+        if (parser_peek_token(parser).kind == TOK_SEMICOLON ||
+            parser_peek_token(parser).kind == TOK_ASSIGN) {
+            return parser_parse_variable_declaration(parser, type, name);
+        } else if (parser_peek_token(parser).kind == TOK_OPEN_PAREN) {
+            return parser_parse_function_declaration(parser, type, name);
+        } else {
+            errorf(buffer_loc_to_source_loc(parser->buffer,
+                                            parser_peek_token(parser).loc),
+                   "expected a ';' after top level declarator");
+
+            process_exit(1);
+        }
+    }
 
     default:
         errorf(buffer_loc_to_source_loc(parser->buffer,

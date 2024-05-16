@@ -7,7 +7,9 @@ SRC := src
 
 SOURCE_FILES := $(wildcard $(SRC)/*.c)
 
-CFLAGS = -Wall -Wextra -Werror -O2 `llvm-config --cflags`
+# Using a 0 level optimization because of some segfault that happens with other levels
+CFLAGS = -Wall -Wextra -Werror -O0 `llvm-config --cflags`
+
 LDFLAGS = `llvm-config --ldflags --libs core --system-libs`
 
 all: $(OUT) $(OUT)/ycc

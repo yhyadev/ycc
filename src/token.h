@@ -11,6 +11,8 @@ typedef enum {
     TOK_OPEN_BRACE,
     TOK_CLOSE_BRACE,
 
+    TOK_ASSIGN,
+
     TOK_SEMICOLON,
     TOK_COLON,
     TOK_COMMA,
