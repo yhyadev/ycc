@@ -107,17 +107,19 @@ LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
         Symbol symbol =
             symbol_table_lookup(&gen->symbol_table, expr.value.identifier.name);
 
+        LLVMValueRef symbol_value;
+
         if (symbol.linkage == SL_GLOBAL) {
             LLVMValueRef global_variable = LLVMGetNamedGlobal(
-                gen->module, expr.value.identifier.name.buffer);
+                gen->module, symbol.name.buffer);
 
-            return LLVMGetInitializer(global_variable);
+            symbol_value = LLVMGetInitializer(global_variable);
         } else {
-            return LLVMBuildLoad2(gen->builder, get_llvm_type(symbol.type),
+            symbol_value = LLVMBuildLoad2(gen->builder, get_llvm_type(symbol.type),
                                   symbol.alloca_pointer, "");
         }
 
-        break;
+        return symbol_value;
     }
 
     default:
@@ -197,6 +199,12 @@ void codegen_compile_return_stmt(CodeGen *gen, ASTStmt stmt) {
 
 void codegen_compile_variable(CodeGen *gen, ASTVariable ast_variable,
                               SymbolLinkage symbol_linkage) {
+    if (ast_variable.type.kind == TY_VOID) {
+        errorf(ast_variable.name.loc, "variable cannot have incomplete type 'void'");
+
+        process_exit(1);
+    }
+
     if (symbol_linkage == SL_GLOBAL) {
         LLVMValueRef global_variable =
             LLVMAddGlobal(gen->module, get_llvm_type(ast_variable.type),
