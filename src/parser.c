@@ -15,13 +15,11 @@
 #include "type.h"
 
 Parser parser_new(Arena *arena, const char *buffer) {
-    Parser parser = {
+    return (Parser){
         .arena = arena,
         .buffer = buffer,
         .lexer = lexer_new(buffer),
     };
-
-    return parser;
 }
 
 Token parser_next_token(Parser *parser) {

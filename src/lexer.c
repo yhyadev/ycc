@@ -5,10 +5,7 @@
 #include "lexer.h"
 #include "token.h"
 
-Lexer lexer_new(const char *buffer) {
-    Lexer lexer = {.buffer = buffer};
-    return lexer;
-}
+Lexer lexer_new(const char *buffer) { return (Lexer){.buffer = buffer}; }
 
 bool lexer_is_eof(Lexer *lexer) {
     return lexer->position >= strlen(lexer->buffer);

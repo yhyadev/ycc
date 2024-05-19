@@ -60,12 +60,10 @@ CodeGen codegen_new(Arena *arena, const char *source_file_path) {
 
     LLVMBuilderRef builder = LLVMCreateBuilder();
 
-    CodeGen gen = {.arena = arena,
-                   .module = module,
-                   .builder = builder,
-                   .symbol_table = symbol_table_new(arena)};
-
-    return gen;
+    return (CodeGen){.arena = arena,
+                     .module = module,
+                     .builder = builder,
+                     .symbol_table = symbol_table_new(arena)};
 }
 
 Type codegen_infer_type(CodeGen *gen, ASTExpr expr) {
@@ -164,12 +162,15 @@ ASTExpr codegen_cast_expr(Type type, ASTExpr expr) {
 }
 
 LLVMValueRef codegen_compile_and_cast_expr(CodeGen *gen, Type expected_type,
-                                           Type original_type, ASTExpr expr, bool constant_only) {
+                                           Type original_type, ASTExpr expr,
+                                           bool constant_only) {
     if (expected_type.kind == original_type.kind) {
-        return codegen_compile_expr(gen, get_llvm_type(expected_type), expr, constant_only);
+        return codegen_compile_expr(gen, get_llvm_type(expected_type), expr,
+                                    constant_only);
     } else {
         return codegen_compile_expr(gen, get_llvm_type(expected_type),
-                                    codegen_cast_expr(expected_type, expr), constant_only);
+                                    codegen_cast_expr(expected_type, expr),
+                                    constant_only);
     }
 }
 
