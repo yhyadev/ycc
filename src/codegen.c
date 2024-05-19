@@ -95,7 +95,7 @@ Type codegen_infer_type(CodeGen *gen, ASTExpr expr) {
 }
 
 LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
-                                  ASTExpr expr) {
+                                  ASTExpr expr, bool constant_only) {
     switch (expr.kind) {
     case EK_INT:
         return LLVMConstInt(llvm_type, expr.value.intval, false);
@@ -104,6 +104,12 @@ LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
         return LLVMConstReal(llvm_type, expr.value.floatval);
 
     case EK_IDENTIFIER: {
+        if (constant_only) {
+            errorf(expr.loc, "expected a constant expression only");
+
+            process_exit(1);
+        }
+
         Symbol symbol =
             symbol_table_lookup(&gen->symbol_table, expr.value.identifier.name);
 
@@ -158,12 +164,12 @@ ASTExpr codegen_cast_expr(Type type, ASTExpr expr) {
 }
 
 LLVMValueRef codegen_compile_and_cast_expr(CodeGen *gen, Type expected_type,
-                                           Type original_type, ASTExpr expr) {
+                                           Type original_type, ASTExpr expr, bool constant_only) {
     if (expected_type.kind == original_type.kind) {
-        return codegen_compile_expr(gen, get_llvm_type(expected_type), expr);
+        return codegen_compile_expr(gen, get_llvm_type(expected_type), expr, constant_only);
     } else {
         return codegen_compile_expr(gen, get_llvm_type(expected_type),
-                                    codegen_cast_expr(expected_type, expr));
+                                    codegen_cast_expr(expected_type, expr), constant_only);
     }
 }
 
@@ -181,7 +187,7 @@ void codegen_compile_return_stmt(CodeGen *gen, ASTStmt stmt) {
                      codegen_compile_and_cast_expr(
                          gen, gen->context.function.prototype.return_type,
                          codegen_infer_type(gen, stmt.value.ret.value),
-                         stmt.value.ret.value));
+                         stmt.value.ret.value, false));
     }
 
     gen->context.function_returned = true;
@@ -209,7 +215,7 @@ void codegen_compile_variable(CodeGen *gen, ASTVariable ast_variable,
                                codegen_compile_and_cast_expr(
                                    gen, ast_variable.type,
                                    codegen_infer_type(gen, ast_variable.value),
-                                   ast_variable.value));
+                                   ast_variable.value, true));
         }
 
         Symbol symbol = {.type = ast_variable.type,
@@ -231,7 +237,7 @@ void codegen_compile_variable(CodeGen *gen, ASTVariable ast_variable,
                            codegen_compile_and_cast_expr(
                                gen, ast_variable.type,
                                codegen_infer_type(gen, ast_variable.value),
-                               ast_variable.value),
+                               ast_variable.value, false),
                            alloca_pointer);
         }
 
