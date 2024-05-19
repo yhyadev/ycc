@@ -176,7 +176,7 @@ LLVMValueRef codegen_compile_and_cast_expr(CodeGen *gen, Type expected_type,
 void codegen_compile_return_stmt(CodeGen *gen, ASTStmt stmt) {
     if (stmt.value.ret.none) {
         if (gen->context.function.prototype.return_type.kind != TY_VOID) {
-            errorf(stmt.loc, "expected non void return type");
+            errorf(stmt.loc, "expected non-void return type");
 
             process_exit(1);
         }
@@ -197,7 +197,7 @@ void codegen_compile_variable(CodeGen *gen, ASTVariable ast_variable,
                               SymbolLinkage symbol_linkage) {
     if (ast_variable.type.kind == TY_VOID) {
         errorf(ast_variable.name.loc,
-               "variable cannot have incomplete type 'void'");
+               "a variable cannot have incomplete type 'void'");
 
         process_exit(1);
     }
