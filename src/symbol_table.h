@@ -17,7 +17,7 @@ typedef struct {
     Type type;
     Name name;
     SymbolLinkage linkage;
-    LLVMValueRef alloca_pointer;
+    LLVMValueRef llvm_value_pointer;
 } Symbol;
 
 typedef struct {

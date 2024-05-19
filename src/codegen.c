@@ -107,19 +107,8 @@ LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
         Symbol symbol =
             symbol_table_lookup(&gen->symbol_table, expr.value.identifier.name);
 
-        LLVMValueRef symbol_value;
-
-        if (symbol.linkage == SL_GLOBAL) {
-            LLVMValueRef global_variable = LLVMGetNamedGlobal(
-                gen->module, symbol.name.buffer);
-
-            symbol_value = LLVMGetInitializer(global_variable);
-        } else {
-            symbol_value = LLVMBuildLoad2(gen->builder, get_llvm_type(symbol.type),
-                                  symbol.alloca_pointer, "");
-        }
-
-        return symbol_value;
+        return LLVMBuildLoad2(gen->builder, get_llvm_type(symbol.type),
+                              symbol.llvm_value_pointer, "");
     }
 
     default:
@@ -159,7 +148,8 @@ ASTExpr codegen_cast_expr(Type type, ASTExpr expr) {
     COMPARE_AND_CAST_EXPRESSION_FLOAT(TY_LONG_DOUBLE, long double)
 
     if (expr.kind == EK_IDENTIFIER) {
-        errorf(expr.loc, "casting non-constant expression is not implemented yet");
+        errorf(expr.loc,
+               "casting non-constant expression is not implemented yet");
 
         process_exit(1);
     }
@@ -200,7 +190,8 @@ void codegen_compile_return_stmt(CodeGen *gen, ASTStmt stmt) {
 void codegen_compile_variable(CodeGen *gen, ASTVariable ast_variable,
                               SymbolLinkage symbol_linkage) {
     if (ast_variable.type.kind == TY_VOID) {
-        errorf(ast_variable.name.loc, "variable cannot have incomplete type 'void'");
+        errorf(ast_variable.name.loc,
+               "variable cannot have incomplete type 'void'");
 
         process_exit(1);
     }
@@ -223,7 +214,8 @@ void codegen_compile_variable(CodeGen *gen, ASTVariable ast_variable,
 
         Symbol symbol = {.type = ast_variable.type,
                          .name = ast_variable.name,
-                         .linkage = symbol_linkage};
+                         .linkage = symbol_linkage,
+                         .llvm_value_pointer = global_variable};
 
         symbol_table_set(&gen->symbol_table, symbol);
     } else {
@@ -246,7 +238,7 @@ void codegen_compile_variable(CodeGen *gen, ASTVariable ast_variable,
         Symbol symbol = {.type = ast_variable.type,
                          .name = ast_variable.name,
                          .linkage = symbol_linkage,
-                         .alloca_pointer = alloca_pointer};
+                         .llvm_value_pointer = alloca_pointer};
 
         symbol_table_set(&gen->symbol_table, symbol);
     }
