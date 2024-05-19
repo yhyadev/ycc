@@ -134,11 +134,9 @@ Name parser_parse_name(Parser *parser) {
 
     arena_da_append(parser->arena, &name_string, '\0');
 
-    Name name = {
+    return (Name){
         .buffer = name_string.items,
         .loc = buffer_loc_to_source_loc(parser->buffer, identifier_token.loc)};
-
-    return name;
 }
 
 ASTExpr parser_parse_expr(Parser *parser) {
@@ -167,10 +165,8 @@ ASTExpr parser_parse_expr(Parser *parser) {
             process_exit(1);
         }
 
-        ASTExpr expr = {
+        return (ASTExpr){
             .value = {.intval = intval}, .kind = EK_INT, .loc = loc};
-
-        return expr;
     }
 
     case TOK_FLOAT: {
@@ -198,20 +194,16 @@ ASTExpr parser_parse_expr(Parser *parser) {
             process_exit(1);
         }
 
-        ASTExpr expr = {
+        return (ASTExpr){
             .value = {.floatval = floatval}, .kind = EK_FLOAT, .loc = loc};
-
-        return expr;
     }
 
     case TOK_IDENTIFIER: {
         Name name = parser_parse_name(parser);
 
-        ASTExpr expr = {.value = {.identifier = {.name = name}},
-                        .kind = EK_IDENTIFIER,
-                        .loc = name.loc};
-
-        return expr;
+        return (ASTExpr){.value = {.identifier = {.name = name}},
+                         .kind = EK_IDENTIFIER,
+                         name.loc};
     }
 
     default:
@@ -254,10 +246,8 @@ ASTDeclaration parser_parse_variable_declaration(Parser *parser, Type type,
                             .value = value,
                             .default_initialized = default_initialized};
 
-    ASTDeclaration declaration = {
+    return (ASTDeclaration){
         .value = {.variable = variable}, .kind = DK_VARIABLE, .loc = name.loc};
-
-    return declaration;
 }
 
 ASTStmt parser_parse_return_stmt(Parser *parser) {
@@ -282,9 +272,7 @@ ASTStmt parser_parse_return_stmt(Parser *parser) {
 
     ASTReturn ret = {.value = value, .none = none};
 
-    ASTStmt stmt = {.value = {.ret = ret}, .kind = SK_RETURN, .loc = loc};
-
-    return stmt;
+    return (ASTStmt){.value = {.ret = ret}, .kind = SK_RETURN, .loc = loc};
 }
 
 ASTStmt parser_parse_stmt(Parser *parser) {
@@ -307,12 +295,10 @@ ASTStmt parser_parse_stmt(Parser *parser) {
         ASTDeclaration declaration =
             parser_parse_variable_declaration(parser, type, name);
 
-        ASTStmt stmt = {
+        return (ASTStmt){
             .value = {.variable_declaration = declaration.value.variable},
             .kind = SK_VARIABLE_DECLARATION,
             .loc = declaration.loc};
-
-        return stmt;
     }
 
     case TOK_KEYWORD_RETURN:
@@ -343,10 +329,7 @@ ASTFunctionParameter parser_parse_function_parameter(Parser *parser) {
         name = parser_parse_name(parser);
     }
 
-    ASTFunctionParameter parameter = {.expected_type = expected_type,
-                                      .name = name};
-
-    return parameter;
+    return (ASTFunctionParameter){.expected_type = expected_type, .name = name};
 }
 
 ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
@@ -449,10 +432,8 @@ ASTDeclaration parser_parse_function_declaration(Parser *parser,
 
     ASTFunction function = {.prototype = prototype, .body = body};
 
-    ASTDeclaration declaration = {
+    return (ASTDeclaration){
         .value = {.function = function}, .kind = DK_FUNCTION, .loc = name.loc};
-
-    return declaration;
 }
 
 ASTDeclaration parser_parse_declaration(Parser *parser) {
