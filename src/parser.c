@@ -10,6 +10,7 @@
 #include "dynamic_string.h"
 #include "lexer.h"
 #include "parser.h"
+#include "precedence.h"
 #include "process.h"
 #include "token.h"
 #include "type.h"
@@ -139,72 +140,110 @@ Name parser_parse_name(Parser *parser) {
         .loc = buffer_loc_to_source_loc(parser->buffer, identifier_token.loc)};
 }
 
-ASTExpr parser_parse_expr(Parser *parser) {
+ASTExpr parser_parse_expr(Parser *parser, Precedence precedence);
+
+ASTUnaryOperation
+parser_parse_unary_operation(Parser *parser, ASTUnaryOperator unary_operator) {
+    Token unary_operator_token = parser_next_token(parser);
+
+    ASTExpr rhs = parser_parse_expr(
+        parser, precedence_from_token(unary_operator_token.kind));
+
+    ASTExpr *rhs_on_heap = arena_memdup(parser->arena, &rhs, sizeof(ASTExpr));
+
+    return (ASTUnaryOperation){.unary_operator = unary_operator,
+                               .rhs = rhs_on_heap};
+}
+
+ASTExpr parser_parse_int_expression(Parser *parser) {
+    Token int_token = parser_next_token(parser);
+    SourceLoc loc = buffer_loc_to_source_loc(parser->buffer, int_token.loc);
+
+    DynamicString int_string = {0};
+
+    for (size_t i = int_token.loc.start; i < int_token.loc.end; i++) {
+        arena_da_append(parser->arena, &int_string, parser->buffer[i]);
+    }
+
+    arena_da_append(parser->arena, &int_string, '\0');
+
+    unsigned long long intval = atoll(int_string.items);
+
+    if (errno == ERANGE) {
+        errorf(loc, intval == LLONG_MAX
+                        ? "integer constant is too big to represent in any "
+                          "integer type"
+                        : "integer constant is too small to represent in "
+                          "any integer type");
+
+        process_exit(1);
+    }
+
+    return (ASTExpr){.value = {.intval = intval}, .kind = EK_INT, .loc = loc};
+}
+
+ASTExpr parser_parse_float_expression(Parser *parser) {
+    Token float_token = parser_next_token(parser);
+    SourceLoc loc = buffer_loc_to_source_loc(parser->buffer, float_token.loc);
+
+    DynamicString float_string = {0};
+
+    for (size_t i = float_token.loc.start; i < float_token.loc.end; i++) {
+        arena_da_append(parser->arena, &float_string, parser->buffer[i]);
+    }
+
+    arena_da_append(parser->arena, &float_string, '\0');
+
+    long double floatval = strtold(float_string.items, NULL);
+
+    if (errno == ERANGE) {
+        errorf(loc, floatval == LDBL_MAX
+                        ? "float constant is too big to represent in any "
+                          "float type"
+                        : "float constant is too small to represent in "
+                          "any float type");
+
+        process_exit(1);
+    }
+
+    return (ASTExpr){
+        .value = {.floatval = floatval}, .kind = EK_FLOAT, .loc = loc};
+}
+
+ASTExpr parser_parse_identifier_expression(Parser *parser) {
+    Name name = parser_parse_name(parser);
+
+    return (ASTExpr){.value = {.identifier = {.name = name}},
+                     .kind = EK_IDENTIFIER,
+                     name.loc};
+}
+
+ASTExpr parser_parse_unary_expression(Parser *parser) {
+    SourceLoc loc =
+        buffer_loc_to_source_loc(parser->buffer, parser_peek_token(parser).loc);
+
+    ASTExpr expr = {.kind = EK_UNARY_OPERATION, .loc = loc};
+
     switch (parser_peek_token(parser).kind) {
-    case TOK_INT: {
-        Token int_token = parser_next_token(parser);
-        SourceLoc loc = buffer_loc_to_source_loc(parser->buffer, int_token.loc);
+    case TOK_MINUS:
+        expr.value.unary = parser_parse_unary_operation(parser, UO_MINUS);
+        break;
 
-        DynamicString int_string = {0};
+    case TOK_BANG:
+        expr.value.unary = parser_parse_unary_operation(parser, UO_BANG);
+        break;
 
-        for (size_t i = int_token.loc.start; i < int_token.loc.end; i++) {
-            arena_da_append(parser->arena, &int_string, parser->buffer[i]);
-        }
+    case TOK_INT:
+        expr = parser_parse_int_expression(parser);
+        break;
 
-        arena_da_append(parser->arena, &int_string, '\0');
+    case TOK_FLOAT:
+        expr = parser_parse_float_expression(parser);
+        break;
 
-        unsigned long long intval = atoll(int_string.items);
-
-        if (errno == ERANGE) {
-            errorf(loc, intval == LLONG_MAX
-                            ? "integer constant is too big to represent in any "
-                              "integer type"
-                            : "integer constant is too small to represent in "
-                              "any integer type");
-
-            process_exit(1);
-        }
-
-        return (ASTExpr){
-            .value = {.intval = intval}, .kind = EK_INT, .loc = loc};
-    }
-
-    case TOK_FLOAT: {
-        Token float_token = parser_next_token(parser);
-        SourceLoc loc =
-            buffer_loc_to_source_loc(parser->buffer, float_token.loc);
-
-        DynamicString float_string = {0};
-
-        for (size_t i = float_token.loc.start; i < float_token.loc.end; i++) {
-            arena_da_append(parser->arena, &float_string, parser->buffer[i]);
-        }
-
-        arena_da_append(parser->arena, &float_string, '\0');
-
-        long double floatval = strtold(float_string.items, NULL);
-
-        if (errno == ERANGE) {
-            errorf(loc, floatval == LDBL_MAX
-                            ? "float constant is too big to represent in any "
-                              "float type"
-                            : "float constant is too small to represent in "
-                              "any float type");
-
-            process_exit(1);
-        }
-
-        return (ASTExpr){
-            .value = {.floatval = floatval}, .kind = EK_FLOAT, .loc = loc};
-    }
-
-    case TOK_IDENTIFIER: {
-        Name name = parser_parse_name(parser);
-
-        return (ASTExpr){.value = {.identifier = {.name = name}},
-                         .kind = EK_IDENTIFIER,
-                         name.loc};
-    }
+    case TOK_IDENTIFIER:
+        expr = parser_parse_identifier_expression(parser);
+        break;
 
     default:
         errorf(buffer_loc_to_source_loc(parser->buffer,
@@ -213,6 +252,72 @@ ASTExpr parser_parse_expr(Parser *parser) {
 
         process_exit(1);
     }
+
+    return expr;
+}
+
+ASTBinaryOperation
+parser_parse_binary_operation(Parser *parser, ASTExpr lhs,
+                              ASTBinaryOperator binary_operator) {
+    Token binary_operator_token = parser_next_token(parser);
+
+    ASTExpr rhs = parser_parse_expr(
+        parser, precedence_from_token(binary_operator_token.kind));
+
+    ASTExpr *lhs_on_heap = arena_memdup(parser->arena, &lhs, sizeof(ASTExpr));
+    ASTExpr *rhs_on_heap = arena_memdup(parser->arena, &rhs, sizeof(ASTExpr));
+
+    return (ASTBinaryOperation){.lhs = lhs_on_heap,
+                                .binary_operator = binary_operator,
+                                .rhs = rhs_on_heap};
+}
+
+ASTExpr parser_parse_binary_expression(Parser *parser, ASTExpr lhs) {
+    SourceLoc loc =
+        buffer_loc_to_source_loc(parser->buffer, parser_peek_token(parser).loc);
+
+    ASTExpr expr = {.kind = EK_BINARY_OPERATION, .loc = loc};
+
+    switch (parser_peek_token(parser).kind) {
+    case TOK_PLUS:
+        expr.value.binary = parser_parse_binary_operation(parser, lhs, BO_PLUS);
+        break;
+
+    case TOK_MINUS:
+        expr.value.binary =
+            parser_parse_binary_operation(parser, lhs, BO_MINUS);
+        break;
+
+    case TOK_STAR:
+        expr.value.binary =
+            parser_parse_binary_operation(parser, lhs, BO_STAR);
+        break;
+
+    case TOK_FORWARD_SLASH:
+        expr.value.binary =
+            parser_parse_binary_operation(parser, lhs, BO_FORWARD_SLASH);
+        break;
+
+    default:
+        errorf(buffer_loc_to_source_loc(parser->buffer,
+                                        parser_peek_token(parser).loc),
+               "expected an expression");
+
+        process_exit(1);
+    }
+
+    return expr;
+}
+
+ASTExpr parser_parse_expr(Parser *parser, Precedence precedence) {
+    ASTExpr lhs = parser_parse_unary_expression(parser);
+
+    while (parser_peek_token(parser).kind != TOK_SEMICOLON &&
+           precedence < precedence_from_token(parser_peek_token(parser).kind)) {
+        lhs = parser_parse_binary_expression(parser, lhs);
+    }
+
+    return lhs;
 }
 
 ASTDeclaration parser_parse_variable_declaration(Parser *parser, Type type,
@@ -229,7 +334,7 @@ ASTDeclaration parser_parse_variable_declaration(Parser *parser, Type type,
             process_exit(1);
         }
 
-        value = parser_parse_expr(parser);
+        value = parser_parse_expr(parser, PR_LOWEST);
         default_initialized = false;
 
         if (!parser_eat_token(parser, TOK_SEMICOLON)) {
@@ -258,7 +363,7 @@ ASTStmt parser_parse_return_stmt(Parser *parser) {
     bool none = true;
 
     if (parser_peek_token(parser).kind != TOK_SEMICOLON) {
-        value = parser_parse_expr(parser);
+        value = parser_parse_expr(parser, PR_LOWEST);
         none = false;
     }
 

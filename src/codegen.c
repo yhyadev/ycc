@@ -78,11 +78,21 @@ Type codegen_infer_type(CodeGen *gen, ASTExpr expr) {
         type.kind = TY_LONG_DOUBLE;
         break;
 
-    case EK_IDENTIFIER: {
+    case EK_IDENTIFIER:
         type =
             symbol_table_lookup(&gen->symbol_table, expr.value.identifier.name)
                 .type;
         break;
+
+    case EK_UNARY_OPERATION:
+        type = codegen_infer_type(gen, *expr.value.unary.rhs);
+        break;
+
+    case EK_BINARY_OPERATION: {
+        Type lhs_type = codegen_infer_type(gen, *expr.value.binary.lhs);
+        Type rhs_type = codegen_infer_type(gen, *expr.value.binary.rhs);
+
+        return lhs_type.kind > rhs_type.kind ? lhs_type : rhs_type;
     }
 
     default:
@@ -113,6 +123,51 @@ LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
 
         return LLVMBuildLoad2(gen->builder, get_llvm_type(symbol.type),
                               symbol.llvm_value_pointer, "");
+    }
+
+    case EK_UNARY_OPERATION: {
+        LLVMValueRef rhs_value = codegen_compile_expr(
+            gen, llvm_type, *expr.value.unary.rhs, constant_only);
+
+        if (expr.value.unary.unary_operator == UO_MINUS) {
+            return LLVMConstNeg(rhs_value);
+        }
+
+        if (expr.value.unary.unary_operator == UO_BANG) {
+            return LLVMConstNot(rhs_value);
+        }
+
+        return LLVMConstNull(llvm_type);
+    }
+
+    case EK_BINARY_OPERATION: {
+        LLVMValueRef lhs_value = codegen_compile_expr(
+            gen, llvm_type, *expr.value.binary.lhs, constant_only);
+
+        LLVMValueRef rhs_value = codegen_compile_expr(
+            gen, llvm_type, *expr.value.binary.rhs, constant_only);
+
+        if (expr.value.binary.binary_operator == BO_PLUS) {
+            return LLVMConstAdd(lhs_value, rhs_value);
+        }
+
+        if (expr.value.binary.binary_operator == BO_MINUS) {
+            return LLVMConstSub(lhs_value, rhs_value);
+        }
+
+        if (expr.value.binary.binary_operator == BO_STAR) {
+            return LLVMConstMul(lhs_value, rhs_value);
+        }
+
+        if (expr.value.binary.binary_operator == BO_FORWARD_SLASH) {
+            if (codegen_infer_type(gen, expr).kind < TY_LONG_DOUBLE) {
+                return LLVMBuildUDiv(gen->builder, lhs_value, rhs_value, "");
+            } else {
+                return LLVMBuildFDiv(gen->builder, lhs_value, rhs_value, "");
+            }
+        }
+
+        return LLVMConstNull(llvm_type);
     }
 
     default:
@@ -156,6 +211,18 @@ ASTExpr codegen_cast_expr(Type type, ASTExpr expr) {
                "casting non-constant expression is not implemented yet");
 
         process_exit(1);
+    }
+
+    if (expr.kind == EK_UNARY_OPERATION) {
+        *expr.value.unary.rhs = codegen_cast_expr(type, *expr.value.unary.rhs);
+    }
+
+    if (expr.kind == EK_BINARY_OPERATION) {
+        *expr.value.binary.lhs =
+            codegen_cast_expr(type, *expr.value.binary.lhs);
+
+        *expr.value.binary.rhs =
+            codegen_cast_expr(type, *expr.value.binary.rhs);
     }
 
     return expr;

@@ -15,27 +15,56 @@ typedef struct {
     SourceLoc loc;
 } Name;
 
+typedef struct ASTExpr ASTExpr;
+
 typedef struct {
     Name name;
 } ASTIdentifier;
+
+typedef enum {
+    UO_MINUS,
+    UO_BANG,
+} ASTUnaryOperator;
+
+typedef struct {
+    ASTUnaryOperator unary_operator;
+    ASTExpr *rhs;
+} ASTUnaryOperation;
+
+typedef enum {
+    BO_PLUS,
+    BO_MINUS,
+    BO_STAR,
+    BO_FORWARD_SLASH,
+} ASTBinaryOperator;
+
+typedef struct {
+    ASTExpr *lhs;
+    ASTBinaryOperator binary_operator;
+    ASTExpr *rhs;
+} ASTBinaryOperation;
 
 typedef struct {
     unsigned long long intval;
     long double floatval;
     ASTIdentifier identifier;
+    ASTUnaryOperation unary;
+    ASTBinaryOperation binary;
 } ASTExprValue;
 
 typedef enum {
     EK_INT,
     EK_FLOAT,
     EK_IDENTIFIER,
+    EK_UNARY_OPERATION,
+    EK_BINARY_OPERATION,
 } ASTExprKind;
 
-typedef struct {
+struct ASTExpr {
     ASTExprValue value;
     ASTExprKind kind;
     SourceLoc loc;
-} ASTExpr;
+};
 
 typedef struct {
     ASTExpr value;

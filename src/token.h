@@ -11,6 +11,11 @@ typedef enum {
     TOK_OPEN_BRACE,
     TOK_CLOSE_BRACE,
 
+    TOK_PLUS,
+    TOK_MINUS,
+    TOK_STAR,
+    TOK_FORWARD_SLASH,
+    TOK_BANG,
     TOK_ASSIGN,
 
     TOK_SEMICOLON,
