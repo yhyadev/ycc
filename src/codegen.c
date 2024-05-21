@@ -361,6 +361,10 @@ typedef struct {
 } LLVMTypes;
 
 void codegen_compile_function(CodeGen *gen, ASTFunction ast_function) {
+    if (strcmp(ast_function.prototype.name.buffer, "main") == 0 && ast_function.prototype.return_type.kind != TY_INT) {
+        warnf(ast_function.prototype.name.loc, "return type of 'main' is not 'int'");
+    }
+
     LLVMTypeRef return_type = get_llvm_type(ast_function.prototype.return_type);
     LLVMTypes parameter_types = {0};
 
