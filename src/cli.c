@@ -18,7 +18,7 @@ char *cli_read_file(Arena *arena, const char *file_path) {
     }
 
     while (true) {
-        char ch = fgetc(fd);
+        int ch = fgetc(fd);
 
         if (ferror(fd)) {
             perror("error");
