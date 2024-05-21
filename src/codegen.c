@@ -118,11 +118,38 @@ LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
             process_exit(1);
         }
 
+        LLVMTypeKind llvm_type_kind = LLVMGetTypeKind(llvm_type);
+
         Symbol symbol =
             symbol_table_lookup(&gen->symbol_table, expr.value.identifier.name);
 
-        return LLVMBuildLoad2(gen->builder, get_llvm_type(symbol.type),
-                              symbol.llvm_value_pointer, "");
+        LLVMValueRef symbol_value =
+            LLVMBuildLoad2(gen->builder, get_llvm_type(symbol.type),
+                           symbol.llvm_value_pointer, "");
+
+        if (LLVMGetTypeKind(get_llvm_type(symbol.type)) != llvm_type_kind) {
+            if (symbol.type.kind >= TY_FLOAT &&
+                llvm_type_kind == LLVMIntegerTypeKind) {
+                symbol_value =
+                    LLVMBuildFPToSI(gen->builder, symbol_value, llvm_type, "");
+            } else if (symbol.type.kind < TY_FLOAT &&
+                       (llvm_type_kind == LLVMDoubleTypeKind ||
+                        llvm_type_kind == LLVMFloatTypeKind)) {
+                symbol_value =
+                    LLVMBuildSIToFP(gen->builder, symbol_value, llvm_type, "");
+            } else if (symbol.type.kind < TY_FLOAT &&
+                       llvm_type_kind == LLVMIntegerTypeKind) {
+                symbol_value = LLVMBuildIntCast2(gen->builder, symbol_value,
+                                                 llvm_type, true, "");
+            } else if (symbol.type.kind >= TY_FLOAT &&
+                       (llvm_type_kind == LLVMDoubleTypeKind ||
+                        llvm_type_kind == LLVMFloatTypeKind)) {
+                symbol_value =
+                    LLVMBuildFPCast(gen->builder, symbol_value, llvm_type, "");
+            }
+        }
+
+        return symbol_value;
     }
 
     case EK_UNARY_OPERATION: {
@@ -160,7 +187,7 @@ LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
         }
 
         if (expr.value.binary.binary_operator == BO_FORWARD_SLASH) {
-            if (codegen_infer_type(gen, expr).kind < TY_LONG_DOUBLE) {
+            if (codegen_infer_type(gen, expr).kind < TY_FLOAT) {
                 return LLVMBuildUDiv(gen->builder, lhs_value, rhs_value, "");
             } else {
                 return LLVMBuildFDiv(gen->builder, lhs_value, rhs_value, "");
@@ -205,13 +232,6 @@ ASTExpr codegen_cast_expr(Type type, ASTExpr expr) {
     COMPARE_AND_CAST_EXPRESSION_FLOAT(TY_FLOAT, float)
     COMPARE_AND_CAST_EXPRESSION_FLOAT(TY_DOUBLE, double)
     COMPARE_AND_CAST_EXPRESSION_FLOAT(TY_LONG_DOUBLE, long double)
-
-    if (expr.kind == EK_IDENTIFIER) {
-        errorf(expr.loc,
-               "casting non-constant expression is not implemented yet");
-
-        process_exit(1);
-    }
 
     if (expr.kind == EK_UNARY_OPERATION) {
         *expr.value.unary.rhs = codegen_cast_expr(type, *expr.value.unary.rhs);
