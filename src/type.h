@@ -1,6 +1,25 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
+
+typedef struct Type Type;
+
+typedef struct {
+    Type *items;
+    size_t count;
+    size_t capacity;
+} Types;
+
+typedef struct {
+    Type *return_type;
+    Types parameters;
+    bool variadic;
+} FunctionPrototype;
+
+typedef union {
+    FunctionPrototype prototype;
+} TypeData;
 
 typedef enum {
     TY_VOID,
@@ -12,8 +31,10 @@ typedef enum {
     TY_FLOAT,
     TY_DOUBLE,
     TY_LONG_DOUBLE,
+    TY_FUNCTION,
 } TypeKind;
 
-typedef struct {
+struct Type {
     TypeKind kind;
-} Type;
+    TypeData data;
+};

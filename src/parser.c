@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "ast.h"
+#include "codegen.h"
 #include "diagnostics.h"
 #include "dynamic_string.h"
 #include "lexer.h"
@@ -272,6 +273,55 @@ parser_parse_binary_operation(Parser *parser, ASTExpr lhs,
                                 .rhs = rhs_on_heap};
 }
 
+ASTExprs parser_parse_call_arguments(Parser *parser) {
+    if (!parser_eat_token(parser, TOK_OPEN_PAREN)) {
+        errorf(buffer_loc_to_source_loc(parser->buffer,
+                                        parser_peek_token(parser).loc),
+               "expected a '('");
+
+        process_exit(1);
+    }
+
+    ASTExprs arguments = {0};
+
+    while (parser_peek_token(parser).kind != TOK_EOF &&
+           parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
+        arena_da_append(parser->arena, &arguments,
+                        parser_parse_expr(parser, PR_LOWEST));
+
+        if (!parser_eat_token(parser, TOK_COMMA) &&
+            parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
+            errorf(buffer_loc_to_source_loc(parser->buffer,
+                                            parser_peek_token(parser).loc),
+                   "expected a ','");
+
+            process_exit(1);
+        }
+    }
+
+    if (!parser_eat_token(parser, TOK_CLOSE_PAREN)) {
+        errorf(buffer_loc_to_source_loc(parser->buffer,
+                                        parser_peek_token(parser).loc),
+               "expected a ')'");
+
+        process_exit(1);
+    }
+
+    return arguments;
+}
+
+ASTExpr parser_parse_call_expression(Parser *parser, ASTExpr callable) {
+    ASTExprs arguments = parser_parse_call_arguments(parser);
+
+    ASTExpr *callable_on_heap =
+        arena_memdup(parser->arena, &callable, sizeof(ASTExpr));
+
+    ASTCall call = {.callable = callable_on_heap, .arguments = arguments};
+
+    return (ASTExpr){
+        .value = {.call = call}, .kind = EK_CALL, .loc = callable.loc};
+}
+
 ASTExpr parser_parse_binary_expression(Parser *parser, ASTExpr lhs) {
     SourceLoc loc =
         buffer_loc_to_source_loc(parser->buffer, parser_peek_token(parser).loc);
@@ -289,13 +339,16 @@ ASTExpr parser_parse_binary_expression(Parser *parser, ASTExpr lhs) {
         break;
 
     case TOK_STAR:
-        expr.value.binary =
-            parser_parse_binary_operation(parser, lhs, BO_STAR);
+        expr.value.binary = parser_parse_binary_operation(parser, lhs, BO_STAR);
         break;
 
     case TOK_FORWARD_SLASH:
         expr.value.binary =
             parser_parse_binary_operation(parser, lhs, BO_FORWARD_SLASH);
+        break;
+
+    case TOK_OPEN_PAREN:
+        expr = parser_parse_call_expression(parser, lhs);
         break;
 
     default:
@@ -380,6 +433,23 @@ ASTStmt parser_parse_return_stmt(Parser *parser) {
     return (ASTStmt){.value = {.ret = ret}, .kind = SK_RETURN, .loc = loc};
 }
 
+ASTStmt parser_parse_expr_stmt(Parser *parser) {
+    ASTExpr expr = parser_parse_expr(parser, PR_LOWEST);
+
+    if (!parser_eat_token(parser, TOK_SEMICOLON)) {
+        errorf(buffer_loc_to_source_loc(parser->buffer,
+                                        parser_peek_token(parser).loc),
+               "expected a ';' at the end of statement");
+
+        process_exit(1);
+    }
+
+    return (ASTStmt){
+        .value = {.expr = expr},
+        .kind = SK_EXPR,
+    };
+}
+
 ASTStmt parser_parse_stmt(Parser *parser) {
     switch (parser_peek_token(parser).kind) {
     case TOK_SEMICOLON:
@@ -410,11 +480,7 @@ ASTStmt parser_parse_stmt(Parser *parser) {
         return parser_parse_return_stmt(parser);
 
     default:
-        errorf(buffer_loc_to_source_loc(parser->buffer,
-                                        parser_peek_token(parser).loc),
-               "expected a statement");
-
-        process_exit(1);
+        return parser_parse_expr_stmt(parser);
     }
 }
 
@@ -446,7 +512,7 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
         process_exit(1);
     }
 
-    ASTFunctionParameters parameters = {.variable = true};
+    ASTFunctionParameters parameters = {.variadic = true};
 
     while (parser_peek_token(parser).kind != TOK_EOF &&
            parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
@@ -457,7 +523,7 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
             parser_parse_function_parameter(parser);
 
         if (parameter.expected_type.kind == TY_VOID) {
-            if (!parameters.variable) {
+            if (!parameters.variadic) {
                 errorf(parameter_type_loc,
                        "'void' must be the first and only parameter");
 
@@ -467,7 +533,7 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
             arena_da_append(parser->arena, &parameters, parameter);
         }
 
-        parameters.variable = false;
+        parameters.variadic = false;
 
         if (!parser_eat_token(parser, TOK_COMMA) &&
             parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
@@ -503,8 +569,7 @@ ASTStmts parser_parse_function_body(Parser *parser) {
 
     while (parser_peek_token(parser).kind != TOK_EOF &&
            parser_peek_token(parser).kind != TOK_CLOSE_BRACE) {
-        ASTStmt stmt = parser_parse_stmt(parser);
-        arena_da_append(parser->arena, &body, stmt);
+        arena_da_append(parser->arena, &body, parser_parse_stmt(parser));
     }
 
     if (!parser_eat_token(parser, TOK_CLOSE_BRACE)) {

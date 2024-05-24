@@ -45,11 +45,23 @@ typedef struct {
 } ASTBinaryOperation;
 
 typedef struct {
+    ASTExpr *items;
+    size_t count;
+    size_t capacity;
+} ASTExprs;
+
+typedef struct {
+    ASTExpr *callable;
+    ASTExprs arguments;
+} ASTCall;
+
+typedef struct {
     unsigned long long intval;
     long double floatval;
     ASTIdentifier identifier;
     ASTUnaryOperation unary;
     ASTBinaryOperation binary;
+    ASTCall call;
 } ASTExprValue;
 
 typedef enum {
@@ -58,6 +70,7 @@ typedef enum {
     EK_IDENTIFIER,
     EK_UNARY_OPERATION,
     EK_BINARY_OPERATION,
+    EK_CALL,
 } ASTExprKind;
 
 struct ASTExpr {
@@ -81,11 +94,13 @@ typedef struct {
 typedef enum {
     SK_RETURN,
     SK_VARIABLE_DECLARATION,
+    SK_EXPR,
 } ASTStmtKind;
 
 typedef union {
     ASTReturn ret;
     ASTVariable variable_declaration;
+    ASTExpr expr;
 } ASTStmtValue;
 
 typedef struct {
@@ -106,11 +121,11 @@ typedef struct {
 } ASTFunctionParameter;
 
 typedef struct {
-    bool variable;
-
     ASTFunctionParameter *items;
     size_t count;
     size_t capacity;
+
+    bool variadic;
 } ASTFunctionParameters;
 
 typedef struct {

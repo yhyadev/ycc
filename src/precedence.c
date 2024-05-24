@@ -1,5 +1,5 @@
-#include "token.h"
 #include "precedence.h"
+#include "token.h"
 
 Precedence precedence_from_token(TokenKind kind) {
     switch (kind) {
@@ -10,6 +10,9 @@ Precedence precedence_from_token(TokenKind kind) {
     case TOK_STAR:
     case TOK_FORWARD_SLASH:
         return PR_PRODUCT;
+
+    case TOK_OPEN_PAREN:
+        return PR_CALL;
 
     default:
         return PR_LOWEST;
