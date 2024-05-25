@@ -249,7 +249,7 @@ ASTExpr parser_parse_unary_expression(Parser *parser) {
     default:
         errorf(buffer_loc_to_source_loc(parser->buffer,
                                         parser_peek_token(parser).loc),
-               "expected an expression");
+               "unexpected token");
 
         process_exit(1);
     }
