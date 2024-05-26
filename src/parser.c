@@ -11,10 +11,27 @@
 #include "dynamic_string.h"
 #include "lexer.h"
 #include "parser.h"
-#include "precedence.h"
 #include "process.h"
 #include "token.h"
 #include "type.h"
+
+Precedence precedence_from_token(TokenKind kind) {
+    switch (kind) {
+    case TOK_PLUS:
+    case TOK_MINUS:
+        return PR_SUM;
+
+    case TOK_STAR:
+    case TOK_FORWARD_SLASH:
+        return PR_PRODUCT;
+
+    case TOK_OPEN_PAREN:
+        return PR_CALL;
+
+    default:
+        return PR_LOWEST;
+    }
+}
 
 Parser parser_new(Arena *arena, const char *buffer) {
     return (Parser){
@@ -145,10 +162,9 @@ ASTExpr parser_parse_expr(Parser *parser, Precedence precedence);
 
 ASTUnaryOperation
 parser_parse_unary_operation(Parser *parser, ASTUnaryOperator unary_operator) {
-    Token unary_operator_token = parser_next_token(parser);
-
-    ASTExpr rhs = parser_parse_expr(
-        parser, precedence_from_token(unary_operator_token.kind));
+    parser_next_token(parser);
+    
+    ASTExpr rhs = parser_parse_expr(parser, PR_PREFIX);
 
     ASTExpr *rhs_on_heap = arena_memdup(parser->arena, &rhs, sizeof(ASTExpr));
 
