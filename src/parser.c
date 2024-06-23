@@ -1,17 +1,19 @@
 #include <errno.h>
 #include <float.h>
 #include <limits.h>
+#include <malloc.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "ast.h"
-#include "codegen.h"
 #include "diagnostics.h"
+#include "dynamic_array.h"
 #include "dynamic_string.h"
 #include "lexer.h"
+#include "memdup.h"
 #include "parser.h"
-#include "process.h"
 #include "token.h"
 #include "type.h"
 
@@ -33,9 +35,8 @@ Precedence precedence_from_token(TokenKind kind) {
     }
 }
 
-Parser parser_new(Arena *arena, const char *buffer) {
+Parser parser_new(const char *buffer) {
     return (Parser){
-        .arena = arena,
         .buffer = buffer,
         .lexer = lexer_new(buffer),
     };
@@ -127,7 +128,7 @@ Type parser_parse_type(Parser *parser) {
         errorf(buffer_loc_to_source_loc(parser->buffer, token.loc),
                "unkown type");
 
-        process_exit(1);
+        exit(1);
     }
 
     return type;
@@ -139,7 +140,7 @@ Name parser_parse_name(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected an identifier");
 
-        process_exit(1);
+        exit(1);
     }
 
     Token identifier_token = parser_next_token(parser);
@@ -148,10 +149,10 @@ Name parser_parse_name(Parser *parser) {
 
     for (size_t i = identifier_token.loc.start; i < identifier_token.loc.end;
          i++) {
-        arena_da_append(parser->arena, &name_string, parser->buffer[i]);
+        da_append(&name_string, parser->buffer[i]);
     }
 
-    arena_da_append(parser->arena, &name_string, '\0');
+    da_append(&name_string, '\0');
 
     return (Name){
         .buffer = name_string.items,
@@ -163,10 +164,10 @@ ASTExpr parser_parse_expr(Parser *parser, Precedence precedence);
 ASTUnaryOperation
 parser_parse_unary_operation(Parser *parser, ASTUnaryOperator unary_operator) {
     parser_next_token(parser);
-    
+
     ASTExpr rhs = parser_parse_expr(parser, PR_PREFIX);
 
-    ASTExpr *rhs_on_heap = arena_memdup(parser->arena, &rhs, sizeof(ASTExpr));
+    ASTExpr *rhs_on_heap = memdup(&rhs, sizeof(ASTExpr));
 
     return (ASTUnaryOperation){.unary_operator = unary_operator,
                                .rhs = rhs_on_heap};
@@ -179,10 +180,10 @@ ASTExpr parser_parse_int_expression(Parser *parser) {
     DynamicString int_string = {0};
 
     for (size_t i = int_token.loc.start; i < int_token.loc.end; i++) {
-        arena_da_append(parser->arena, &int_string, parser->buffer[i]);
+        da_append(&int_string, parser->buffer[i]);
     }
 
-    arena_da_append(parser->arena, &int_string, '\0');
+    da_append(&int_string, '\0');
 
     unsigned long long intval = atoll(int_string.items);
 
@@ -193,7 +194,7 @@ ASTExpr parser_parse_int_expression(Parser *parser) {
                         : "integer constant is too small to represent in "
                           "any integer type");
 
-        process_exit(1);
+        exit(1);
     }
 
     return (ASTExpr){.value = {.intval = intval}, .kind = EK_INT, .loc = loc};
@@ -206,10 +207,10 @@ ASTExpr parser_parse_float_expression(Parser *parser) {
     DynamicString float_string = {0};
 
     for (size_t i = float_token.loc.start; i < float_token.loc.end; i++) {
-        arena_da_append(parser->arena, &float_string, parser->buffer[i]);
+        da_append(&float_string, parser->buffer[i]);
     }
 
-    arena_da_append(parser->arena, &float_string, '\0');
+    da_append(&float_string, '\0');
 
     long double floatval = strtold(float_string.items, NULL);
 
@@ -220,7 +221,7 @@ ASTExpr parser_parse_float_expression(Parser *parser) {
                         : "float constant is too small to represent in "
                           "any float type");
 
-        process_exit(1);
+        exit(1);
     }
 
     return (ASTExpr){
@@ -267,7 +268,7 @@ ASTExpr parser_parse_unary_expression(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "unexpected token");
 
-        process_exit(1);
+        exit(1);
     }
 
     return expr;
@@ -281,8 +282,8 @@ parser_parse_binary_operation(Parser *parser, ASTExpr lhs,
     ASTExpr rhs = parser_parse_expr(
         parser, precedence_from_token(binary_operator_token.kind));
 
-    ASTExpr *lhs_on_heap = arena_memdup(parser->arena, &lhs, sizeof(ASTExpr));
-    ASTExpr *rhs_on_heap = arena_memdup(parser->arena, &rhs, sizeof(ASTExpr));
+    ASTExpr *lhs_on_heap = memdup(&lhs, sizeof(ASTExpr));
+    ASTExpr *rhs_on_heap = memdup(&rhs, sizeof(ASTExpr));
 
     return (ASTBinaryOperation){.lhs = lhs_on_heap,
                                 .binary_operator = binary_operator,
@@ -295,15 +296,14 @@ ASTExprs parser_parse_call_arguments(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a '('");
 
-        process_exit(1);
+        exit(1);
     }
 
     ASTExprs arguments = {0};
 
     while (parser_peek_token(parser).kind != TOK_EOF &&
            parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
-        arena_da_append(parser->arena, &arguments,
-                        parser_parse_expr(parser, PR_LOWEST));
+        da_append(&arguments, parser_parse_expr(parser, PR_LOWEST));
 
         if (!parser_eat_token(parser, TOK_COMMA) &&
             parser_peek_token(parser).kind != TOK_CLOSE_PAREN) {
@@ -311,7 +311,7 @@ ASTExprs parser_parse_call_arguments(Parser *parser) {
                                             parser_peek_token(parser).loc),
                    "expected a ','");
 
-            process_exit(1);
+            exit(1);
         }
     }
 
@@ -320,7 +320,7 @@ ASTExprs parser_parse_call_arguments(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a ')'");
 
-        process_exit(1);
+        exit(1);
     }
 
     return arguments;
@@ -329,8 +329,7 @@ ASTExprs parser_parse_call_arguments(Parser *parser) {
 ASTExpr parser_parse_call_expression(Parser *parser, ASTExpr callable) {
     ASTExprs arguments = parser_parse_call_arguments(parser);
 
-    ASTExpr *callable_on_heap =
-        arena_memdup(parser->arena, &callable, sizeof(ASTExpr));
+    ASTExpr *callable_on_heap = memdup(&callable, sizeof(ASTExpr));
 
     ASTCall call = {.callable = callable_on_heap, .arguments = arguments};
 
@@ -372,7 +371,7 @@ ASTExpr parser_parse_binary_expression(Parser *parser, ASTExpr lhs) {
                                         parser_peek_token(parser).loc),
                "expected an expression");
 
-        process_exit(1);
+        exit(1);
     }
 
     return expr;
@@ -400,7 +399,7 @@ ASTDeclaration parser_parse_variable_declaration(Parser *parser, Type type,
                                             parser_peek_token(parser).loc),
                    "expected a ';' at the end of declaration");
 
-            process_exit(1);
+            exit(1);
         }
 
         value = parser_parse_expr(parser, PR_LOWEST);
@@ -411,7 +410,7 @@ ASTDeclaration parser_parse_variable_declaration(Parser *parser, Type type,
                                             parser_peek_token(parser).loc),
                    "expected a ';' at the end of declaration");
 
-            process_exit(1);
+            exit(1);
         }
     }
 
@@ -441,7 +440,7 @@ ASTStmt parser_parse_return_stmt(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a ';' at the end of statement");
 
-        process_exit(1);
+        exit(1);
     }
 
     ASTReturn ret = {.value = value, .none = none};
@@ -457,7 +456,7 @@ ASTStmt parser_parse_expr_stmt(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a ';' at the end of statement");
 
-        process_exit(1);
+        exit(1);
     }
 
     return (ASTStmt){
@@ -511,7 +510,7 @@ ASTFunctionParameter parser_parse_function_parameter(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "function parameter with incomplete type");
 
-        process_exit(1);
+        exit(1);
     } else if (expected_type.kind != TY_VOID) {
         name = parser_parse_name(parser);
     }
@@ -525,7 +524,7 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a '('");
 
-        process_exit(1);
+        exit(1);
     }
 
     ASTFunctionParameters parameters = {.variadic = true};
@@ -543,10 +542,10 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
                 errorf(parameter_type_loc,
                        "'void' must be the first and only parameter");
 
-                process_exit(1);
+                exit(1);
             }
         } else {
-            arena_da_append(parser->arena, &parameters, parameter);
+            da_append(&parameters, parameter);
         }
 
         parameters.variadic = false;
@@ -557,7 +556,7 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
                                             parser_peek_token(parser).loc),
                    "expected a ','");
 
-            process_exit(1);
+            exit(1);
         }
     }
 
@@ -566,7 +565,7 @@ ASTFunctionParameters parser_parse_function_parameters(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a ')'");
 
-        process_exit(1);
+        exit(1);
     }
 
     return parameters;
@@ -578,14 +577,14 @@ ASTStmts parser_parse_function_body(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a '{'");
 
-        process_exit(1);
+        exit(1);
     }
 
     ASTStmts body = {0};
 
     while (parser_peek_token(parser).kind != TOK_EOF &&
            parser_peek_token(parser).kind != TOK_CLOSE_BRACE) {
-        arena_da_append(parser->arena, &body, parser_parse_stmt(parser));
+        da_append(&body, parser_parse_stmt(parser));
     }
 
     if (!parser_eat_token(parser, TOK_CLOSE_BRACE)) {
@@ -593,7 +592,7 @@ ASTStmts parser_parse_function_body(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a '}'");
 
-        process_exit(1);
+        exit(1);
     }
 
     return body;
@@ -645,7 +644,7 @@ ASTDeclaration parser_parse_declaration(Parser *parser) {
                                             parser_peek_token(parser).loc),
                    "expected a ';' after top level declarator");
 
-            process_exit(1);
+            exit(1);
         }
     }
 
@@ -654,7 +653,7 @@ ASTDeclaration parser_parse_declaration(Parser *parser) {
                                         parser_peek_token(parser).loc),
                "expected a top level declaration");
 
-        process_exit(1);
+        exit(1);
     }
 }
 
@@ -662,8 +661,7 @@ ASTRoot parser_parse_root(Parser *parser) {
     ASTRoot root = {0};
 
     while (parser_peek_token(parser).kind != TOK_EOF) {
-        arena_da_append(parser->arena, &root.declarations,
-                        parser_parse_declaration(parser));
+        da_append(&root.declarations, parser_parse_declaration(parser));
     }
 
     return root;

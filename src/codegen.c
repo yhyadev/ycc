@@ -1,29 +1,31 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Types.h>
 
-#include "arena.h"
 #include "ast.h"
 #include "codegen.h"
 #include "diagnostics.h"
-#include "process.h"
+#include "dynamic_array.h"
+#include "memdup.h"
 #include "symbol_table.h"
 #include "type.h"
 
-CodeGen codegen_new(Arena *arena, const char *source_file_path) {
+CodeGen codegen_new(const char *source_file_path) {
     LLVMModuleRef module = LLVMModuleCreateWithName(source_file_path);
     LLVMSetSourceFileName(module, source_file_path, strlen(source_file_path));
 
     LLVMBuilderRef builder = LLVMCreateBuilder();
 
-    return (CodeGen){.arena = arena,
-                     .module = module,
-                     .builder = builder,
-                     .symbol_table = symbol_table_new(arena)};
+    return (CodeGen){
+        .module = module,
+        .builder = builder,
+        .symbol_table = symbol_table_new(),
+    };
 }
 
 Type codegen_infer_type(CodeGen *gen, ASTExpr expr) {
@@ -61,7 +63,7 @@ Type codegen_infer_type(CodeGen *gen, ASTExpr expr) {
         if (callable_type.kind != TY_FUNCTION) {
             errorf(expr.loc, "expected a callable");
 
-            process_exit(1);
+            exit(1);
         }
 
         type = *callable_type.data.prototype.return_type;
@@ -120,9 +122,9 @@ LLVMTypeRef codegen_get_llvm_type(CodeGen *gen, Type type) {
             .variadic = type.data.prototype.variadic};
 
         for (size_t i = 0; i < type.data.prototype.parameters.count; i++) {
-            arena_da_append(gen->arena, &llvm_function_prototype.parameters,
-                            codegen_get_llvm_type(
-                                gen, type.data.prototype.parameters.items[i]));
+            da_append(&llvm_function_prototype.parameters,
+                      codegen_get_llvm_type(
+                          gen, type.data.prototype.parameters.items[i]));
         }
 
         return LLVMFunctionType(llvm_function_prototype.return_type,
@@ -211,7 +213,7 @@ LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
         if (constant_only) {
             errorf(expr.loc, "expected a constant expression only");
 
-            process_exit(1);
+            exit(1);
         }
 
         Symbol symbol =
@@ -280,7 +282,7 @@ LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
         if (constant_only) {
             errorf(expr.loc, "expected a constant expression only");
 
-            process_exit(1);
+            exit(1);
         }
 
         Type callable_type = codegen_infer_type(gen, *expr.value.call.callable);
@@ -288,7 +290,7 @@ LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
         if (callable_type.kind != TY_FUNCTION) {
             errorf(expr.loc, "expected a callable");
 
-            process_exit(1);
+            exit(1);
         }
 
         if (expr.value.call.arguments.count !=
@@ -300,7 +302,7 @@ LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
                                                         : "argument",
                    expr.value.call.arguments.count);
 
-            process_exit(1);
+            exit(1);
         }
 
         LLVMTypeRef llvm_callable_type =
@@ -312,8 +314,8 @@ LLVMValueRef codegen_compile_expr(CodeGen *gen, LLVMTypeRef llvm_type,
         LLVMValues llvm_arguments = {0};
 
         for (size_t i = 0; i < expr.value.call.arguments.count; i++) {
-            arena_da_append(
-                gen->arena, &llvm_arguments,
+            da_append(
+                &llvm_arguments,
                 codegen_compile_and_cast_expr(
                     gen, callable_type.data.prototype.parameters.items[i],
                     codegen_infer_type(gen, expr.value.call.arguments.items[i]),
@@ -397,7 +399,7 @@ void codegen_compile_return_stmt(CodeGen *gen, ASTStmt stmt) {
         if (gen->context.function.prototype.return_type.kind != TY_VOID) {
             errorf(stmt.loc, "expected non-void return type");
 
-            process_exit(1);
+            exit(1);
         }
 
         LLVMBuildRetVoid(gen->builder);
@@ -418,7 +420,7 @@ void codegen_compile_variable(CodeGen *gen, ASTVariable ast_variable,
         errorf(ast_variable.name.loc,
                "a variable cannot have incomplete type 'void'");
 
-        process_exit(1);
+        exit(1);
     }
 
     if (symbol_linkage == SL_GLOBAL) {
@@ -508,8 +510,8 @@ void codegen_compile_function(CodeGen *gen, ASTFunction ast_function) {
               "return type of 'main' is not 'int'");
     }
 
-    Type *function_return_type_on_heap = arena_memdup(
-        gen->arena, &ast_function.prototype.return_type, sizeof(Type));
+    Type *function_return_type_on_heap =
+        memdup(&ast_function.prototype.return_type, sizeof(Type));
 
     FunctionPrototype function_prototype = {
         .return_type = function_return_type_on_heap,
@@ -517,9 +519,8 @@ void codegen_compile_function(CodeGen *gen, ASTFunction ast_function) {
     };
 
     for (size_t i = 0; i < ast_function.prototype.parameters.count; i++) {
-        arena_da_append(
-            gen->arena, &function_prototype.parameters,
-            ast_function.prototype.parameters.items[i].expected_type);
+        da_append(&function_prototype.parameters,
+                  ast_function.prototype.parameters.items[i].expected_type);
     }
 
     Type function_type = {.kind = TY_FUNCTION,

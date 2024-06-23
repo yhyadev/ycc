@@ -2,8 +2,6 @@
 
 #include <stddef.h>
 
-#include "arena.h"
-
 typedef struct {
     const char *file_path;
     char *file_content;
@@ -20,4 +18,4 @@ typedef struct {
     InputFiles input_files;
 } CLI;
 
-CLI cli_parse(Arena *arena, int argc, const char **argv);
+CLI cli_parse(int argc, const char **argv);

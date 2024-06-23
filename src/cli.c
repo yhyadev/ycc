@@ -2,19 +2,18 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include "arena.h"
 #include "cli.h"
+#include "dynamic_array.h"
 #include "dynamic_string.h"
-#include "process.h"
 
-char *cli_read_file(Arena *arena, const char *file_path) {
+char *cli_read_file(const char *file_path) {
     DynamicString file_content = {0};
 
     FILE *fd = fopen(file_path, "r");
 
     if (fd == NULL) {
         perror("error");
-        process_exit(1);
+        exit(1);
     }
 
     while (true) {
@@ -23,14 +22,14 @@ char *cli_read_file(Arena *arena, const char *file_path) {
         if (ferror(fd)) {
             perror("error");
             fclose(fd);
-            process_exit(1);
+            exit(1);
         }
 
         if (ch == EOF) {
-            arena_da_append(arena, &file_content, '\0');
+            da_append(&file_content, '\0');
             break;
         } else {
-            arena_da_append(arena, &file_content, ch);
+            da_append(&file_content, ch);
         }
     };
 
@@ -39,14 +38,14 @@ char *cli_read_file(Arena *arena, const char *file_path) {
     return file_content.items;
 }
 
-CLI cli_parse(Arena *arena, int argc, const char **argv) {
+CLI cli_parse(int argc, const char **argv) {
     CLI cli = {.program_name = argv[0]};
 
     for (int i = 1; i < argc; i++) {
         InputFile input_file = {.file_path = argv[i],
-                                .file_content = cli_read_file(arena, argv[i])};
+                                .file_content = cli_read_file(argv[i])};
 
-        arena_da_append(arena, &cli.input_files, input_file);
+        da_append(&cli.input_files, input_file);
     }
 
     return cli;
